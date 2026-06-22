@@ -11,15 +11,17 @@ final class Agent: Identifiable {
     var status: AgentStatus
     var project: String
     var cwd: String
+    var host: String
     var prompt: String?
     var options: [String]?
 
-    init(id: String, name: String, status: AgentStatus, project: String, cwd: String) {
+    init(id: String, name: String, status: AgentStatus, project: String, cwd: String, host: String = "local") {
         self.id = id
         self.name = name
         self.status = status
         self.project = project
         self.cwd = cwd
+        self.host = host
     }
 }
 
@@ -38,6 +40,7 @@ struct AgentMessage: Codable {
         let status: String
         let cwd: String
         let project: String
+        let host: String?
     }
 }
 

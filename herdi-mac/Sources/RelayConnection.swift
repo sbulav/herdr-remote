@@ -106,11 +106,12 @@ final class RelayConnection {
                     if let existing = agents.first(where: { $0.id == a.pane_id }) {
                         existing.status = AgentStatus(rawValue: a.status) ?? .unknown
                         existing.project = a.project
+                        existing.host = a.host ?? "local"
                     } else {
                         agents.append(Agent(
                             id: a.pane_id, name: a.agent,
                             status: AgentStatus(rawValue: a.status) ?? .unknown,
-                            project: a.project, cwd: a.cwd
+                            project: a.project, cwd: a.cwd, host: a.host ?? "local"
                         ))
                     }
                 }

@@ -173,8 +173,12 @@ struct AgentCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(agent.project.isEmpty ? agent.name : agent.project)
                     .font(.body.weight(.medium))
-                Text(agent.name)
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(agent.name).font(.caption).foregroundStyle(.secondary)
+                    if agent.host != "local" {
+                        Text("@\(agent.host)").font(.caption2).foregroundStyle(.orange)
+                    }
+                }
             }
             Spacer()
             if agent.status == .blocked {

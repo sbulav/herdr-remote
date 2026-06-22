@@ -93,7 +93,12 @@ struct AgentRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(agent.project.isEmpty ? agent.name : agent.project)
                     .font(.body)
-                Text(agent.name).font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(agent.name).font(.caption2).foregroundStyle(.secondary)
+                    if agent.host != "local" {
+                        Text("@\(agent.host)").font(.caption2).foregroundStyle(.orange)
+                    }
+                }
             }
             Spacer()
             if agent.status == .blocked {

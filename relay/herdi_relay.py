@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Herdi relay daemon - polls herdr, exposes WebSocket on port 8375, advertises via mDNS."""
+"""Herdi relay daemon - polls local + remote herdr instances, exposes WebSocket on port 8375."""
 import asyncio, json, os, re, signal, socket, subprocess
 
 try:
@@ -8,8 +8,11 @@ except ImportError:
     from websockets.server import serve
 
 HERDR = os.environ.get("HERDR_BIN", "/opt/homebrew/bin/herdr")
-WS_PORT = 8375
+WS_PORT = int(os.environ.get("HERDI_PORT", "8375"))
 POLL_INTERVAL = 2
+
+# Remote hosts: comma-separated SSH targets, e.g. "user@server1,user@server2"
+REMOTES = [r.strip() for r in os.environ.get("HERDI_REMOTES", "").split(",") if r.strip()]
 
 TOOL_OPTIONS = ["yes, single permission", "trust, always allow", "no (tab to edit)"]
 SUBAGENT_OPTIONS = ["approve all pending", "configure individually", "exit (cancel subagents)"]
@@ -26,31 +29,52 @@ last_statuses = {}
 event_queue = asyncio.Queue()
 
 
-def run_herdr(*args):
+def run_herdr(*args, remote=None):
+    """Run herdr command locally or on a remote host via SSH."""
     try:
-        r = subprocess.run([HERDR, *args], capture_output=True, text=True, timeout=10)
+        if remote:
+            cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", remote, HERDR, *args]
+        else:
+            cmd = [HERDR, *args]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         return r.stdout.strip()
     except Exception:
         return ""
 
 
-def get_agents():
-    raw = run_herdr("pane", "list")
+def get_agents_from_host(remote=None):
+    """Get agents from a single herdr instance (local or remote)."""
+    raw = run_herdr("pane", "list", remote=remote)
+    host_label = remote or "local"
     try:
         data = json.loads(raw)
         panes = data.get("result", {}).get("panes", [])
         return [
-            {"pane_id": p["pane_id"], "agent": p.get("agent", ""),
-             "status": p.get("agent_status", "unknown"),
-             "cwd": p.get("cwd", ""), "project": os.path.basename(p.get("cwd", ""))}
+            {
+                "pane_id": p["pane_id"],
+                "agent": p.get("agent", ""),
+                "status": p.get("agent_status", "unknown"),
+                "cwd": p.get("cwd", ""),
+                "project": os.path.basename(p.get("cwd", "")),
+                "host": host_label,
+                "remote": remote,
+            }
             for p in panes if p.get("agent")
         ]
     except (json.JSONDecodeError, KeyError):
         return []
 
 
-def read_pane(pane_id):
-    raw = run_herdr("pane", "read", pane_id, "--lines", "20", "--source", "recent")
+def get_all_agents():
+    """Poll all configured herdr instances."""
+    agents = get_agents_from_host(remote=None)
+    for remote in REMOTES:
+        agents.extend(get_agents_from_host(remote=remote))
+    return agents
+
+
+def read_pane(pane_id, remote=None):
+    raw = run_herdr("pane", "read", pane_id, "--lines", "20", "--source", "recent", remote=remote)
     lines = [l for l in raw.splitlines() if l.strip() and not CHROME_RE.search(l)]
     return "\n".join(lines[-6:])
 
@@ -62,6 +86,10 @@ def detect_options(text):
     if "approve all pending" in lower:
         return SUBAGENT_OPTIONS
     return None
+
+
+# Map pane_id -> remote target for routing responses
+pane_remote_map = {}
 
 
 async def broadcast(msg):
@@ -77,17 +105,22 @@ async def broadcast(msg):
 
 async def poll_loop():
     while True:
-        agents = get_agents()
+        agents = get_all_agents()
         if agents:
+            # Track which pane belongs to which remote
+            for a in agents:
+                pane_remote_map[a["pane_id"]] = a.get("remote")
+
             await broadcast({"type": "agents", "agents": agents})
             for a in agents:
                 pid, status = a["pane_id"], a["status"]
                 if status == "blocked" and last_statuses.get(pid) != "blocked":
-                    content = read_pane(pid)
+                    content = read_pane(pid, remote=a.get("remote"))
                     options = detect_options(content)
                     await broadcast({
                         "type": "blocked", "pane_id": pid,
                         "agent": a["agent"], "project": a["project"],
+                        "host": a.get("host", "local"),
                         "prompt": content[:500],
                         "options": options or TOOL_OPTIONS
                     })
@@ -101,12 +134,14 @@ async def event_push():
         pane_id = event.get("pane_id", "")
         status = event.get("status", "")
         if status == "blocked" and pane_id:
-            content = read_pane(pane_id)
+            remote = pane_remote_map.get(pane_id)
+            content = read_pane(pane_id, remote=remote)
             options = detect_options(content)
             await broadcast({
                 "type": "blocked", "pane_id": pane_id,
                 "agent": event.get("agent", ""),
                 "project": event.get("project", ""),
+                "host": event.get("host", "local"),
                 "prompt": content[:500],
                 "options": options or TOOL_OPTIONS
             })
@@ -121,7 +156,9 @@ async def handle_client(ws):
             except json.JSONDecodeError:
                 continue
             if msg.get("type") == "respond":
-                run_herdr("pane", "send-text", msg["pane_id"], msg["text"] + "\n")
+                pane_id = msg["pane_id"]
+                remote = pane_remote_map.get(pane_id)
+                run_herdr("pane", "send-text", pane_id, msg["text"] + "\n", remote=remote)
     finally:
         clients.discard(ws)
 
@@ -163,7 +200,9 @@ async def main():
     asyncio.create_task(poll_loop())
     asyncio.create_task(event_push())
     server = await serve(handle_client, "0.0.0.0", WS_PORT)
+    hosts = ["local"] + REMOTES
     print(f"herdi relay listening on ws://0.0.0.0:{WS_PORT}")
+    print(f"  polling: {', '.join(hosts)}")
     stop = loop.create_future()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set_result, None)

@@ -64,6 +64,18 @@ python3 herdi_relay.py
 herdr plugin link .
 ```
 
+### Remote Herdr Instances
+
+Monitor agents running on remote machines via SSH:
+
+```bash
+# Set comma-separated SSH targets (requires key-based auth)
+export HERDI_REMOTES="user@server1,user@server2"
+python3 relay/herdi_relay.py
+```
+
+The relay will poll each remote's `herdr pane list` over SSH. Responses are routed back to the correct host automatically. Agents show an `@host` label in the UI so you know where they're running.
+
 ### iOS App
 
 Open `herdi-ios/` in Xcode or build with Swift Package Manager. Requires iOS 17+.
