@@ -18,7 +18,7 @@ struct MenuBarPanel: View {
             // Header
             HStack {
                 Circle().fill(relay.isConnected ? .green : .red).frame(width: 6, height: 6)
-                Text("herdi").font(.headline)
+                Text("herdr").font(.headline)
                 Spacer()
                 Text("\(relay.agents.count) agents").font(.caption).foregroundStyle(.secondary)
                 Button { showSettings.toggle() } label: {

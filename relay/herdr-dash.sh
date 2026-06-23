@@ -1,5 +1,5 @@
 #!/bin/bash
-# Launch herdi TUI in a herdr split pane (right side, 30% width)
+# Launch herdr-remote TUI in a herdr split pane (right side, 30% width)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Install deps if needed
@@ -11,10 +11,10 @@ if command -v herdr &>/dev/null; then
         herdr pane split "$PANE" --direction right --ratio 0.3 --focus
         sleep 0.3
         NEW_PANE=$(herdr pane current 2>/dev/null | jq -r '.result.pane_id' 2>/dev/null)
-        herdr pane send-text "$NEW_PANE" "python3 $SCRIPT_DIR/herdi_tui.py"
+        herdr pane send-text "$NEW_PANE" "python3 $SCRIPT_DIR/herdr-remote_tui.py"
         exit 0
     fi
 fi
 
 # Fallback: just run directly
-python3 "$SCRIPT_DIR/herdi_tui.py"
+python3 "$SCRIPT_DIR/herdr-remote_tui.py"

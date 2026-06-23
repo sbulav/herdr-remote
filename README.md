@@ -12,20 +12,20 @@ Mobile & desktop interface for [herdr](https://herdr.dev) AI coding agents. Moni
        │                 │                │               │
        └────────────── WebSocket ─────────┴───────────────┘
                          │
-                  ┌──────┴──────┐
-                  │ herdi-relay │ :8375
-                  └──────┬──────┘
-                         │ CLI / UDP :8376
-                  ┌──────┴──────┐
-                  │    herdr    │
-                  └─────────────┘
+              ┌──────────┴──────────┐
+              │   herdr-remote      │ :8375
+              │   relay             │ (WS + HTTP POST + UDP)
+              └──────────┬──────────┘
+                         │
+          ┌──────────────┼──────────────┐
+          │ CLI poll     │ herdr-push   │ SSH poll
+          │ (local)      │ (event push) │ (remote)
+          │              │              │
+       ┌──┴──┐     ┌────┴────┐    ┌────┴────┐
+       │herdr│     │herdr    │    │herdr    │
+       │local│     │(remote) │    │(remote) │
+       └─────┘     └─────────┘    └─────────┘
 ```
-
-- **relay/** — Python daemon that polls herdr, accepts plugin events, and serves a WebSocket
-- **herdi-ios/** — SwiftUI iOS app that connects via Bonjour or manual IP
-- **herdi-mac/** — Native macOS menu bar app (like cmux)
-- **relay/herdi_tui.py** — Terminal dashboard (Textual TUI)
-- **relay/herdi_telegram.py** — Telegram bot for remote approval
 
 ## Install — macOS Menu Bar App
 
@@ -34,21 +34,20 @@ Download the latest DMG from [Releases](https://github.com/dcolinmorgan/herdr-re
 ```bash
 cd herdi-mac
 ./build.sh
-# Output: dist/HerdiMac.app
-cp -r dist/HerdiMac.app /Applications/
-open /Applications/HerdiMac.app
+cp -r dist/Herdi.app /Applications/
+open /Applications/Herdi.app
 ```
 
-The app lives in your menu bar. Toggle "Launch at Login" in the panel to start automatically.
+The app lives in your menu bar. Toggle "Launch at Login" in Settings.
 
 ## Install — Terminal TUI
 
 ```bash
 pip install textual websockets
-python3 relay/herdi_tui.py
+python3 relay/herdr_tui.py
 
 # Or split into a herdr pane:
-./relay/herdi-dash.sh
+./relay/herdr-dash.sh
 ```
 
 ## Setup
@@ -57,73 +56,51 @@ python3 relay/herdi_tui.py
 
 ```bash
 cd relay
-pip install -r requirements.txt
-python3 herdi_relay.py
-
-# Or install as herdr plugin for instant event push:
-herdr plugin link .
+python3 -m venv .venv && .venv/bin/pip install websockets zeroconf
+.venv/bin/python3 herdr_relay.py
 ```
 
 ### Remote Herdr Instances
 
-Monitor agents running on remote machines — no SSH required. Install the herdr plugin on each machine:
+Monitor agents running on remote machines — no SSH required. Install the [herdr-push](https://github.com/dcolinmorgan/herdr-push) plugin on each machine:
 
 ```bash
 # On the remote machine:
 herdr plugin install dcolinmorgan/herdr-push
 
-# Set your Mac's relay address (Tailscale IP, LAN IP, etc.):
-export HERDI_RELAY_HOST="ws://100.120.17.59:8375"
+# Set your relay address:
+export HERDR_RELAY="wss://your-tunnel.trycloudflare.com"
+# or LAN: export HERDR_RELAY="http://192.168.1.x:8375"
+
+launchctl setenv HERDR_RELAY "$HERDR_RELAY"  # macOS
+herdr server reload-config
 ```
 
-The plugin pushes status events to your relay instantly on every agent state change. No polling, no SSH, no passwords — just outbound WebSocket from the remote to your Mac.
+The plugin pushes status events via HTTP POST (zero deps, just curl) on every agent state change. No polling, no SSH, no inbound ports needed.
 
-#### Alternative: SSH polling (if you have SSH access)
+#### Exposing the relay (no firewall changes needed)
 
 ```bash
-# Set comma-separated SSH targets (requires key-based auth)
-export HERDI_REMOTES="user@server1,user@server2"
-python3 relay/herdi_relay.py
+# Quick tunnel (free, URL changes on restart):
+cloudflared tunnel --url http://localhost:8375
+
+# Or Tailscale Funnel:
+tailscale funnel 8375
 ```
 
-The relay will poll each remote's `herdr pane list` over SSH. Responses are routed back to the correct host automatically. Agents show an `@host` label in the UI so you know where they're running.
-
-### iOS App
-
-Open `herdi-ios/` in Xcode or build with Swift Package Manager. Requires iOS 17+.
-
-The app auto-discovers the relay via Bonjour (`_herdi._tcp`), or you can enter the IP manually in Settings.
-
-## Features (MVP)
-
-- Agent kanban board (Blocked → Working → Idle)
-- Tap blocked agents to see approval prompt + option buttons
-- Send responses back to the agent with one tap
-- Auto-reconnect on network changes
-- Bonjour service discovery
-
-## LaunchAgent
-
-To keep the relay running:
+#### Alternative: SSH polling
 
 ```bash
-cp relay/com.herdi.relay.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.herdi.relay.plist
+export HERDR_REMOTES="user@server1,user@server2"
+python3 relay/herdr_relay.py
 ```
 
-## Telegram Bot
-
-Approve/reject agent requests from anywhere via Telegram:
+### Telegram Bot
 
 ```bash
-# 1. Create a bot via @BotFather, get token
-# 2. Send /start to your bot to get your chat ID
-# 3. Set env vars:
-export HERDI_TG_TOKEN="your-token"
-export HERDI_TG_CHAT_ID="your-chat-id"
-
-# 4. Run alongside the relay:
-python3 relay/herdi_telegram.py
+export HERDR_TG_TOKEN="your-token"
+export HERDR_TG_CHAT_ID="your-chat-id"
+python3 relay/herdr_telegram.py
 ```
 
 When an agent blocks, you get a Telegram message with inline buttons:
@@ -131,9 +108,22 @@ When an agent blocks, you get a Telegram message with inline buttons:
 - **🔓 Trust (always)** → `trust, always allow`
 - **❌ No** → `no (tab to edit)`
 
-For subagent approvals:
-- **✅ Approve all** → `approve all pending`
-- **⚙️ Configure** → `configure individually`
-- **❌ Cancel** → `exit (cancel subagents)`
+Reply with free text to send a custom response.
 
-You can also reply to any notification with free text to send a custom response.
+## LaunchAgent
+
+```bash
+cp relay/com.herdr-remote.relay.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.herdr-remote.relay.plist
+```
+
+## Features
+
+- Agent kanban board (Blocked → Working → Idle)
+- One-tap/click approval for blocked agents
+- Custom text responses
+- Auto-reconnect on network changes
+- Bonjour service discovery
+- Auto-update from GitHub releases
+- Push notifications (macOS + Telegram)
+- Local + remote agent monitoring

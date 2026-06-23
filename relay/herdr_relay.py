@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Herdi relay daemon - polls local + remote herdr instances, exposes WebSocket on port 8375."""
+"""herdr-remote relay — polls herdr, accepts push events (HTTP POST + WebSocket + UDP), broadcasts to clients."""
 import asyncio, json, os, re, signal, socket, subprocess
+from http import HTTPStatus
 
 try:
     from websockets.asyncio.server import serve
@@ -8,11 +9,11 @@ except ImportError:
     from websockets.server import serve
 
 HERDR = os.environ.get("HERDR_BIN", "/opt/homebrew/bin/herdr")
-WS_PORT = int(os.environ.get("HERDI_PORT", "8375"))
+WS_PORT = int(os.environ.get("HERDR_RELAY_PORT", "8375"))
 POLL_INTERVAL = 2
 
-# Remote hosts: comma-separated SSH targets, e.g. "user@server1,user@server2"
-REMOTES = [r.strip() for r in os.environ.get("HERDI_REMOTES", "").split(",") if r.strip()]
+# Remote hosts: comma-separated SSH targets
+REMOTES = [r.strip() for r in os.environ.get("HERDR_REMOTES", "").split(",") if r.strip()]
 
 TOOL_OPTIONS = ["yes, single permission", "trust, always allow", "no (tab to edit)"]
 SUBAGENT_OPTIONS = ["approve all pending", "configure individually", "exit (cancel subagents)"]
@@ -27,10 +28,10 @@ CHROME_RE = re.compile(
 clients = set()
 last_statuses = {}
 event_queue = asyncio.Queue()
+pane_remote_map = {}
 
 
 def run_herdr(*args, remote=None):
-    """Run herdr command locally or on a remote host via SSH."""
     try:
         if remote:
             cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", remote, HERDR, *args]
@@ -43,7 +44,6 @@ def run_herdr(*args, remote=None):
 
 
 def get_agents_from_host(remote=None):
-    """Get agents from a single herdr instance (local or remote)."""
     raw = run_herdr("pane", "list", remote=remote)
     host_label = remote or "local"
     try:
@@ -66,7 +66,6 @@ def get_agents_from_host(remote=None):
 
 
 def get_all_agents():
-    """Poll all configured herdr instances."""
     agents = get_agents_from_host(remote=None)
     for remote in REMOTES:
         agents.extend(get_agents_from_host(remote=remote))
@@ -88,10 +87,6 @@ def detect_options(text):
     return None
 
 
-# Map pane_id -> remote target for routing responses
-pane_remote_map = {}
-
-
 async def broadcast(msg):
     data = json.dumps(msg)
     dead = set()
@@ -107,10 +102,8 @@ async def poll_loop():
     while True:
         agents = get_all_agents()
         if agents:
-            # Track which pane belongs to which remote
             for a in agents:
                 pane_remote_map[a["pane_id"]] = a.get("remote")
-
             await broadcast({"type": "agents", "agents": agents})
             for a in agents:
                 pid, status = a["pane_id"], a["status"]
@@ -136,7 +129,6 @@ async def event_push():
         host = event.get("host", "local")
 
         if status == "blocked" and pane_id:
-            # For remote plugin events, we can't read the pane — use what's in the event
             remote = pane_remote_map.get(pane_id)
             if remote or host == "local":
                 content = read_pane(pane_id, remote=remote)
@@ -152,7 +144,6 @@ async def event_push():
                 "options": options or TOOL_OPTIONS
             })
 
-        # Always broadcast the status change so clients can update
         if pane_id and event.get("type") == "agent_event":
             await broadcast({
                 "type": "agents", "agents": [{
@@ -164,6 +155,19 @@ async def event_push():
                     "host": host,
                 }]
             })
+
+
+async def process_request(connection, request):
+    """Handle HTTP POST for plugin push (curl-friendly). Return None to proceed with WebSocket."""
+    if request.method == "POST":
+        try:
+            body = (await request.body()).decode()
+            event = json.loads(body)
+            event_queue.put_nowait(event)
+        except Exception:
+            pass
+        return connection.respond(HTTPStatus.OK, "ok\n")
+    return None
 
 
 async def handle_client(ws):
@@ -179,7 +183,6 @@ async def handle_client(ws):
                 remote = pane_remote_map.get(pane_id)
                 run_herdr("pane", "send-text", pane_id, msg["text"] + "\n", remote=remote)
             elif msg.get("type") == "agent_event":
-                # Remote plugin pushed an event — inject into event queue
                 event_queue.put_nowait(msg)
     finally:
         clients.discard(ws)
@@ -200,7 +203,7 @@ def start_mdns():
         import threading
         ip = sock_mod.gethostbyname(sock_mod.gethostname())
         info = ServiceInfo(
-            "_herdi._tcp.local.", "Herdi._herdi._tcp.local.",
+            "_herdr-remote._tcp.local.", "herdr-remote._herdr-remote._tcp.local.",
             addresses=[sock_mod.inet_aton(ip)], port=WS_PORT,
         )
         zc = Zeroconf()
@@ -221,9 +224,9 @@ async def main():
         print("UDP 8376 in use, plugin push disabled")
     asyncio.create_task(poll_loop())
     asyncio.create_task(event_push())
-    server = await serve(handle_client, "0.0.0.0", WS_PORT)
+    server = await serve(handle_client, "0.0.0.0", WS_PORT, process_request=process_request)
     hosts = ["local"] + REMOTES
-    print(f"herdi relay listening on ws://0.0.0.0:{WS_PORT}")
+    print(f"herdr-remote relay on ws://0.0.0.0:{WS_PORT} (also accepts HTTP POST)")
     print(f"  polling: {', '.join(hosts)}")
     stop = loop.create_future()
     for sig in (signal.SIGINT, signal.SIGTERM):

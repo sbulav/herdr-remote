@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""herdi-tui: terminal dashboard for herdr agents. Connects to herdi-relay via WebSocket."""
+"""herdr-remote-tui: terminal dashboard for herdr agents. Connects to herdr-remote-relay via WebSocket."""
 import asyncio, json, os, sys
 
 from textual.app import App, ComposeResult
@@ -9,7 +9,7 @@ from textual.reactive import reactive
 from textual.message import Message
 from textual import work
 
-RELAY_WS = os.environ.get("HERDI_RELAY_WS", "ws://127.0.0.1:8375")
+RELAY_WS = os.environ.get("HERDR_RELAY", "ws://127.0.0.1:8375")
 
 
 class AgentCard(Static):
@@ -75,7 +75,7 @@ class ApprovalPanel(Vertical):
             self.post_message(self.Responded(self.agent["pane_id"], event.value.strip()))
 
 
-class HerdiTUI(App):
+class Herdr RemoteTUI(App):
     CSS = """
     #board { height: 1fr; }
     #approvals { height: auto; max-height: 40%; }
@@ -124,7 +124,7 @@ class HerdiTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.title = "herdi"
+        self.title = "herdr-remote"
         self.sub_title = "agent dashboard"
         self.connect_relay()
 
@@ -136,7 +136,7 @@ class HerdiTUI(App):
                 async with websockets.connect(RELAY_WS) as ws:
                     self._ws = ws
                     self.connected = True
-                    self.mutate_reactive(HerdiTUI.connected)
+                    self.mutate_reactive(Herdr RemoteTUI.connected)
                     self.recompose()
                     async for raw in ws:
                         try:
@@ -147,7 +147,7 @@ class HerdiTUI(App):
             except Exception:
                 self._ws = None
                 self.connected = False
-                self.mutate_reactive(HerdiTUI.connected)
+                self.mutate_reactive(Herdr RemoteTUI.connected)
                 self.recompose()
                 await asyncio.sleep(3)
 
@@ -187,4 +187,4 @@ class HerdiTUI(App):
 
 
 if __name__ == "__main__":
-    HerdiTUI().run()
+    Herdr RemoteTUI().run()

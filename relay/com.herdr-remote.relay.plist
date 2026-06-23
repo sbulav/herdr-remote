@@ -3,19 +3,19 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.herdi.relay</string>
+    <string>com.herdr-remote.relay</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Users/apple/Developer/dcolinmorgan/herdi/relay/.venv/bin/python3</string>
-        <string>/Users/apple/Developer/dcolinmorgan/herdi/relay/herdi_relay.py</string>
+        <string>/Users/apple/Developer/dcolinmorgan/herdi/relay/herdr_relay.py</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/herdi-relay.log</string>
+    <string>/tmp/herdr-remote-relay.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/herdi-relay.err</string>
+    <string>/tmp/herdr-remote-relay.err</string>
 </dict>
 </plist>

@@ -6,11 +6,11 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, ContextTypes, filters
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("herdi-tg")
+log = logging.getLogger("herdr-remote-tg")
 
 TOKEN = os.environ["HERDI_TG_TOKEN"]
 CHAT_ID = os.environ.get("HERDI_TG_CHAT_ID")  # restrict to your user
-RELAY_WS = os.environ.get("HERDI_RELAY_WS", "ws://127.0.0.1:8375")
+RELAY_WS = os.environ.get("HERDR_RELAY", "ws://127.0.0.1:8375")
 
 # Store pane_id per message for callback routing
 pending: dict[int, str] = {}  # message_id -> pane_id
@@ -19,7 +19,7 @@ pending: dict[int, str] = {}  # message_id -> pane_id
 # --- Relay communication ---
 
 async def send_to_relay(pane_id: str, text: str):
-    """Send a response to the herdi relay via WebSocket."""
+    """Send a response to the herdr-remote relay via WebSocket."""
     import websockets
     msg = json.dumps({"type": "respond", "pane_id": pane_id, "text": text})
     async with websockets.connect(RELAY_WS) as ws:
@@ -30,7 +30,7 @@ async def send_to_relay(pane_id: str, text: str):
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "herdi telegram bot active.\n"
+        "herdr-remote telegram bot active.\n"
         f"Chat ID: `{update.effective_chat.id}`\n"
         "Set HERDI_TG_CHAT_ID to this value.",
         parse_mode="Markdown"
