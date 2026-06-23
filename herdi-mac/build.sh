@@ -55,6 +55,11 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <array>
         <string>_herdi._tcp</string>
     </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
 </dict>
 </plist>
 EOF

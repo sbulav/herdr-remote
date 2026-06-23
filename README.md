@@ -29,7 +29,7 @@ Mobile interface for [herdr](https://herdr.dev) AI coding agents. Monitor agent 
 
 ## Install — macOS Menu Bar App
 
-Download the latest DMG from [Releases](https://github.com/dcolinmorgan/herdi/releases), or build from source:
+Download the latest DMG from [Releases](https://github.com/dcolinmorgan/herdr-remote/releases), or build from source:
 
 ```bash
 cd herdi-mac
@@ -70,7 +70,7 @@ Monitor agents running on remote machines — no SSH required. Install the herdr
 
 ```bash
 # On the remote machine:
-herdr plugin install dcolinmorgan/herdi/herdr-plugin
+herdr plugin install dcolinmorgan/herdr-push
 
 # Set your Mac's relay address (Tailscale IP, LAN IP, etc.):
 export HERDI_RELAY_HOST="ws://100.120.17.59:8375"
