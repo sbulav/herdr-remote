@@ -9,47 +9,48 @@
 <title>herdr-remote</title>
 <style>
 :root {
-  --bg: #0a0a0a; --surface: #1a1a1a; --border: #222; --text: #e5e5e5; --muted: #888;
-  --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --orange: #f97316;
+  --bg: #0d1117; --surface: #161b22; --border: #21262d; --text: #e6edf3; --muted: #7d8590;
+  --green: #3fb950; --red: #f85149; --blue: #58a6ff; --orange: #d29922;
 }
 [data-theme="herdr"] {
-  --bg: #1a1b26; --surface: #24283b; --border: #2f3549; --text: #c0caf5; --muted: #565f89;
+  --bg: #1a1b26; --surface: #1f2335; --border: #292e42; --text: #a9b1d6; --muted: #565f89;
   --green: #73daca; --red: #f7768e; --blue: #7aa2f7; --orange: #ff9e64;
 }
 [data-theme="light"] {
-  --bg: #f8f8f8; --surface: #fff; --border: #e0e0e0; --text: #1a1a1a; --muted: #666;
+  --bg: #ffffff; --surface: #f6f8fa; --border: #d1d9e0; --text: #1f2328; --muted: #636c76;
+  --green: #1a7f37; --red: #cf222e; --blue: #0969da; --orange: #9a6700;
 }
 [data-theme="sand"] {
-  --bg: #f5f0e8; --surface: #faf7f2; --border: #e8e0d4; --text: #3d3529; --muted: #8a7d6b;
-  --green: #6b8f5e; --red: #c25a4a; --blue: #5b7fa6; --orange: #c08040;
+  --bg: #faf6f1; --surface: #ffffff; --border: #e8e0d5; --text: #2c2416; --muted: #7a6e5e;
+  --green: #4a7c4e; --red: #b8423a; --blue: #4a6fa5; --orange: #b07830;
 }
-[data-theme="latte"] {
-  --bg: #efe9dd; --surface: #f9f5ed; --border: #ddd5c8; --text: #4a4035; --muted: #8c7d6d;
-  --green: #40a02b; --red: #d20f39; --blue: #1e66f5; --orange: #df8e1d;
+[data-theme="clay"] {
+  --bg: #1a1614; --surface: #242019; --border: #362f26; --text: #e4dcd0; --muted: #9c8e7c;
+  --green: #8fae6a; --red: #d4705a; --blue: #7ca5c4; --orange: #d4a05a;
 }
 [data-theme="dune"] {
-  --bg: #1c1710; --surface: #2a2218; --border: #3d3225; --text: #d4c4a8; --muted: #8a7a60;
-  --green: #a8b87a; --red: #c9604a; --blue: #7a9cb8; --orange: #d4944a;
+  --bg: #20191a; --surface: #2b2122; --border: #3d302e; --text: #e8d8cc; --muted: #a08878;
+  --green: #b5bd68; --red: #cc6666; --blue: #81a2be; --orange: #de935f;
 }
 [data-theme="nord"] {
-  --bg: #2e3440; --surface: #3b4252; --border: #434c5e; --text: #eceff4; --muted: #8fbcbb;
-  --green: #a3be8c; --red: #bf616a; --blue: #81a1c1; --orange: #d08770;
+  --bg: #242933; --surface: #2e3440; --border: #3b4252; --text: #d8dee9; --muted: #616e88;
+  --green: #a3be8c; --red: #bf616a; --blue: #88c0d0; --orange: #d08770;
 }
 [data-theme="rose"] {
-  --bg: #191724; --surface: #1f1d2e; --border: #26233a; --text: #e0def4; --muted: #908caa;
+  --bg: #191724; --surface: #1f1d2e; --border: #26233a; --text: #e0def4; --muted: #6e6a86;
   --green: #9ccfd8; --red: #eb6f92; --blue: #c4a7e7; --orange: #f6c177;
 }
 [data-theme="dracula"] {
-  --bg: #282a36; --surface: #343746; --border: #44475a; --text: #f8f8f2; --muted: #6272a4;
+  --bg: #21222c; --surface: #282a36; --border: #343746; --text: #f8f8f2; --muted: #6272a4;
   --green: #50fa7b; --red: #ff5555; --blue: #8be9fd; --orange: #ffb86c;
 }
-[data-theme="solarized"] {
-  --bg: #002b36; --surface: #073642; --border: #586e75; --text: #839496; --muted: #657b83;
-  --green: #859900; --red: #dc322f; --blue: #268bd2; --orange: #cb4b16;
+[data-theme="kanagawa"] {
+  --bg: #1f1f28; --surface: #2a2a37; --border: #363646; --text: #dcd7ba; --muted: #727169;
+  --green: #76946a; --red: #c34043; --blue: #7e9cd8; --orange: #ffa066;
 }
-[data-theme="vesper"] {
-  --bg: #101010; --surface: #1c1c1c; --border: #2a2a2a; --text: #b0b0b0; --muted: #606060;
-  --green: #6bab73; --red: #d47474; --blue: #7a9ec2; --orange: #d4a06a;
+[data-theme="midnight"] {
+  --bg: #0b0e14; --surface: #11141b; --border: #1c2029; --text: #bfbdb6; --muted: #545c6a;
+  --green: #7fd962; --red: #d95757; --blue: #59c2ff; --orange: #e6b450;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; }
@@ -165,7 +166,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 </div>
 
 <script>
-const THEMES = ['dark','herdr','light','sand','latte','dune','nord','rose','dracula','solarized','vesper'];
+const THEMES = ['dark','herdr','light','sand','clay','dune','nord','rose','dracula','kanagawa','midnight'];
 let ws = null, agents = [], activePane = null, refreshInterval = null;
 
 // Settings
