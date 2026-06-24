@@ -196,7 +196,7 @@ function connect() {
   if (!url) { showSetup(); return; }
   if (ws) ws.close();
   setStatus('connecting');
-  // Append token as query param if stored separately
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
   const token = localStorage.getItem('herdr_relay_token');
   let wsUrl = url;
   if (token) wsUrl += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
@@ -228,9 +228,16 @@ function handleMessage(msg) {
     if (a) { a.status='blocked'; a.prompt=msg.prompt; a.options=msg.options; }
     else agents.push({...msg, status:'blocked'});
     render();
+    notify(msg.agent || 'Agent', msg.project || '');
   } else if (msg.type === 'pane_content' && msg.pane_id === activePane) {
     document.getElementById('termContent').textContent = msg.content || '(empty)';
     document.getElementById('termContent').scrollTop = 99999;
+  }
+}
+
+function notify(agent, project) {
+  if (Notification.permission === 'granted') {
+    new Notification('Agent Blocked', { body: `${agent} needs input in ${project}`, icon: '🐑' });
   }
 }
 
