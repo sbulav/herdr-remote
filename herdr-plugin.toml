@@ -1,0 +1,10 @@
+id = "herdr-remote.relay"
+name = "Herdr Remote"
+version = "0.5.0"
+min_herdr_version = "0.7.0"
+description = "Monitor and approve herdr agents from your phone, menu bar, or Telegram"
+platforms = ["macos", "linux"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["python3", "relay/on_event.py"]
