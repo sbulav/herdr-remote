@@ -85,19 +85,22 @@ async def cmd_agents(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     lines = []
     if blocked:
-        lines.append("*Blocked:*")
+        lines.append("BLOCKED:")
         for a in blocked:
-            lines.append(f"  {a['project']} ({a['agent']}) {'@'+a['host'] if a.get('host','local')!='local' else ''}")
+            host = f" @{a['host']}" if a.get('host', 'local') != 'local' else ''
+            lines.append(f"  {a['project']} ({a['agent']}){host}")
     if working:
-        lines.append("*Working:*")
+        lines.append("WORKING:")
         for a in working:
-            lines.append(f"  {a['project']} ({a['agent']}) {'@'+a['host'] if a.get('host','local')!='local' else ''}")
+            host = f" @{a['host']}" if a.get('host', 'local') != 'local' else ''
+            lines.append(f"  {a['project']} ({a['agent']}){host}")
     if idle:
-        lines.append("*Idle:*")
+        lines.append("IDLE:")
         for a in idle:
-            lines.append(f"  {a['project']} ({a['agent']}) {'@'+a['host'] if a.get('host','local')!='local' else ''}")
+            host = f" @{a['host']}" if a.get('host', 'local') != 'local' else ''
+            lines.append(f"  {a['project']} ({a['agent']}){host}")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -108,11 +111,11 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     status = "Connected" if relay_connected else "Disconnected"
     text = (
-        f"Relay: `{RELAY_WS}`\n"
+        f"Relay: {RELAY_WS}\n"
         f"Status: {status}\n"
         f"Agents: {len(agents)} ({b} blocked, {w} working, {i} idle)"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text)
 
 
 async def cmd_read(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -138,10 +141,9 @@ async def cmd_read(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     content = await read_pane(match["pane_id"])
-    # Truncate for Telegram (4096 char limit)
     if len(content) > 3500:
         content = content[-3500:]
-    await update.message.reply_text(f"`{match['project']}`:\n```\n{content}\n```", parse_mode="Markdown")
+    await update.message.reply_text(f"{match['project']}:\n\n{content}")
 
 
 async def cmd_interrupt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
