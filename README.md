@@ -1,11 +1,13 @@
 # herdr-remote
 
-Monitor and approve [herdr](https://herdr.dev) agents from your phone, menu bar, or Telegram — no SSH required.
+Monitor and approve [herdr](https://herdr.dev) agents from your phone, menu bar, or Telegram -- no SSH required.
+
+**[Try the live demo](https://herdr-demo.pages.dev)** -- no install, works on any phone
 
 ```
 herdr plugin install dcolinmorgan/herdr-push
 ./relay/start.sh
-# → open herdr-remote.pages.dev on your phone
+# → open herdr-demo.pages.dev on your phone
 ```
 
 ## Features
@@ -22,11 +24,11 @@ herdr plugin install dcolinmorgan/herdr-push
 
 | Agent List | Terminal View |
 |:--:|:--:|
-| ![Agent list](landing-ui.jpeg) | ![Terminal interaction](chat-ui.jpeg) |
+| ![Agent list](public/agent_list.jpeg) | ![Terminal interaction](public/terminal_view.jpeg) |
 
 ## Web App
 
-**[herdr-remote.pages.dev](https://herdr-remote.pages.dev)**
+**[herdr-demo.pages.dev](https://herdr-demo.pages.dev)**
 
 - Tap any agent to open a live terminal view
 - Special mobile keyboard: Tab, Esc, ^C, y/n + floating arrow d-pad
@@ -50,7 +52,7 @@ Prints a `wss://` tunnel URL. No account needed (free Cloudflare quick tunnel).
 
 ### 2. Open on your phone
 
-Go to [herdr-remote.pages.dev](https://herdr-remote.pages.dev) → tap ⚙ → paste the URL → Connect.
+Go to [herdr-demo.pages.dev](https://herdr-demo.pages.dev) → tap ⚙ → paste the URL → Connect.
 
 ### 3. Monitor remote machines
 
