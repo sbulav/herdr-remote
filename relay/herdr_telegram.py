@@ -222,6 +222,37 @@ async def cmd_send(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Failed: {e}")
 
 
+async def cmd_reply(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Handle /reply [project] — show agent output then accept input."""
+    global send_target
+    args = ctx.args
+
+    if not agents:
+        await update.message.reply_text("No agents.")
+        return
+
+    if not args:
+        keyboard = [[InlineKeyboardButton(
+            f"{a['project']} ({a['agent']})",
+            callback_data=json.dumps({"action": "select_reply", "pane_id": a["pane_id"]})
+        )] for a in agents[:8]]
+        await update.message.reply_text("Reply to which agent?", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    query = " ".join(args).lower()
+    match = next((a for a in agents if query in a.get("project", "").lower() or query in a.get("agent", "").lower()), None)
+    if not match:
+        await update.message.reply_text(f"No agent matching '{query}'.")
+        return
+
+    # Show output then set send target
+    content = await read_pane(match["pane_id"])
+    if len(content) > 3000:
+        content = content[-3000:]
+    send_target = match["pane_id"]
+    await update.message.reply_text(f"{match['project']}:\n\n{content}\n\n--- Type your response below ---")
+
+
 async def cmd_trust(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Handle /trust [project] — send 'trust, always allow' to a blocked agent."""
     args = ctx.args
@@ -282,6 +313,15 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         send_target = data["pane_id"]
         agent_name = next((a['project'] for a in agents if a['pane_id'] == data['pane_id']), '?')
         await query.message.reply_text(f"Ready. Type your message — it will be sent to {agent_name}.")
+        return
+
+    if action == "select_reply":
+        send_target = data["pane_id"]
+        agent_name = next((a['project'] for a in agents if a['pane_id'] == data['pane_id']), '?')
+        content = await read_pane(data["pane_id"])
+        if len(content) > 3000:
+            content = content[-3000:]
+        await query.message.reply_text(f"{agent_name}:\n\n{content}\n\n--- Type your response below ---")
         return
 
     if action == "trust":
@@ -429,6 +469,7 @@ def main():
     app.add_handler(CommandHandler("agents", cmd_agents))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("read", cmd_read))
+    app.add_handler(CommandHandler("reply", cmd_reply))
     app.add_handler(CommandHandler("send", cmd_send))
     app.add_handler(CommandHandler("trust", cmd_trust))
     app.add_handler(CommandHandler("interrupt", cmd_interrupt))
