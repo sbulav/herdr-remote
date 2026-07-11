@@ -4,12 +4,39 @@
 # dependencies = ["websockets>=14.0", "zeroconf>=0.80.0"]
 # ///
 """herdr-remote relay — polls herdr, accepts push events (HTTP POST + WebSocket + UDP), broadcasts to clients."""
-import asyncio, json, os, re, signal, socket, subprocess
+import asyncio, json, logging, os, re, signal, socket, subprocess, time
 
 try:
     from websockets.asyncio.server import serve
 except ImportError:
     from websockets.server import serve
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
+
+from logging.handlers import RotatingFileHandler
+import sys
+
+def _get_log_dir():
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Logs/herdr-remote")
+    if os.path.isdir("/var/log") and os.access("/var/log", os.W_OK):
+        return "/var/log/herdr-remote"
+    return os.path.expanduser("~/.local/state/herdr-remote/log")
+
+LOG_DIR = os.environ.get("HERDR_LOG_DIR", _get_log_dir())
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "relay.log")
+
+_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+_file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
+_file_handler.setFormatter(_formatter)
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_formatter)
+
+log = logging.getLogger("herdr-relay")
+log.setLevel(logging.INFO)
+log.addHandler(_file_handler)
+log.addHandler(_console_handler)
+logging.getLogger("websockets").setLevel(logging.WARNING)
 
 HERDR = os.environ.get("HERDR_BIN", "/opt/homebrew/bin/herdr")
 WS_PORT = int(os.environ.get("HERDR_RELAY_PORT", "8375"))
@@ -33,6 +60,10 @@ clients = set()
 last_statuses = {}
 event_queue = asyncio.Queue()
 pane_remote_map = {}
+known_panes = set()
+
+SAFE_RESPONSES = {"y", "n", "a", "yes", "no", "trust", "yes, single permission", "trust, always allow", "no (tab to edit)", "approve all pending", "configure individually", "exit (cancel subagents)"}
+SAFE_KEYS = {"y", "n", "a", "Enter", "Tab", "Escape", "C-c", "Up", "Down", "Left", "Right", "BSpace"}
 
 
 def run_herdr(*args, remote=None):
@@ -57,6 +88,7 @@ def get_agents_from_host(remote=None):
             {
                 "pane_id": p["pane_id"],
                 "agent": p.get("agent", ""),
+                "label": p.get("label", ""),
                 "status": p.get("agent_status", "unknown"),
                 "cwd": p.get("cwd", ""),
                 "project": os.path.basename(p.get("cwd", "")),
@@ -77,9 +109,9 @@ def get_all_agents():
 
 
 def read_pane(pane_id, remote=None):
-    raw = run_herdr("pane", "read", pane_id, "--lines", "20", "--source", "recent", remote=remote)
+    raw = run_herdr("pane", "read", pane_id, "--lines", "50", "--source", "recent", remote=remote)
     lines = [l for l in raw.splitlines() if l.strip() and not CHROME_RE.search(l)]
-    return "\n".join(lines[-6:])
+    return "\n".join(lines[-20:])
 
 
 def detect_options(text):
@@ -97,31 +129,44 @@ async def broadcast(msg):
     for ws in clients:
         try:
             await ws.send(data)
+        except (ConnectionClosedError, ConnectionClosedOK):
+            dead.add(ws)
         except Exception:
             dead.add(ws)
+    if dead:
+        log.debug("Removed %d dead client(s)", len(dead))
     clients.difference_update(dead)
 
 
 async def poll_loop():
     while True:
         agents = get_all_agents()
-        if agents:
-            for a in agents:
-                pane_remote_map[a["pane_id"]] = a.get("remote")
-            await broadcast({"type": "agents", "agents": agents})
-            for a in agents:
-                pid, status = a["pane_id"], a["status"]
-                if status == "blocked" and last_statuses.get(pid) != "blocked":
-                    content = read_pane(pid, remote=a.get("remote"))
-                    options = detect_options(content)
-                    await broadcast({
-                        "type": "blocked", "pane_id": pid,
-                        "agent": a["agent"], "project": a["project"],
-                        "host": a.get("host", "local"),
-                        "prompt": content[:500],
-                        "options": options or TOOL_OPTIONS
-                    })
-                last_statuses[pid] = status
+        # Always broadcast (even empty list) so clients stay in sync
+        for a in agents:
+            pane_remote_map[a["pane_id"]] = a.get("remote")
+            known_panes.add(a["pane_id"])
+        await broadcast({"type": "agents", "agents": agents})
+        for a in agents:
+            pid, status = a["pane_id"], a["status"]
+            if status == "blocked" and last_statuses.get(pid) != "blocked":
+                content = read_pane(pid, remote=a.get("remote"))
+                options = detect_options(content)
+                await broadcast({
+                    "type": "blocked", "pane_id": pid,
+                    "agent": a["agent"], "project": a["project"],
+                    "host": a.get("host", "local"),
+                    "prompt": content[:500],
+                    "options": options or TOOL_OPTIONS
+                })
+            last_statuses[pid] = status
+        # Clean up panes that are no longer reported
+        current_pane_ids = {a["pane_id"] for a in agents}
+        stale = known_panes - current_pane_ids
+        if stale:
+            known_panes.difference_update(stale)
+            for pid in stale:
+                pane_remote_map.pop(pid, None)
+                last_statuses.pop(pid, None)
         await asyncio.sleep(POLL_INTERVAL)
 
 
@@ -199,9 +244,21 @@ async def process_request(connection, request):
         ])
         return Response(204, "No Content", headers, b"")
 
+    # Serve web app for GET / or GET /index.html
+    path = (request.path or "/").split("?")[0]
+    if path in ("/", "/index.html"):
+        web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+        index_path = os.path.join(web_dir, "index.html")
+        if os.path.isfile(index_path):
+            with open(index_path, "rb") as f:
+                body = f.read()
+            headers = Headers([
+                ("Content-Type", "text/html; charset=utf-8"),
+                ("Cache-Control", "no-cache"),
+            ])
+            return Response(200, "OK", headers, body)
+
     # HTTP POST — parse event from URL query params as fallback
-    # (since we can't read request body in websockets 16)
-    # Plugins should encode payload in the URL path: POST /push?payload=...
     import urllib.parse
     if "?" in (request.path or ""):
         _, qs = request.path.split("?", 1)
@@ -218,7 +275,31 @@ async def process_request(connection, request):
 
 
 async def handle_client(ws):
+    remote_addr = ws.remote_address
+    ip = remote_addr[0] if remote_addr else "unknown"
+    ua = ws.request.headers.get("User-Agent", "unknown") if ws.request else "unknown"
+    origin = ws.request.headers.get("Origin", "") if ws.request else ""
+
+    device = "unknown"
+    ua_lower = ua.lower()
+    if "iphone" in ua_lower or "ipad" in ua_lower:
+        device = "iOS"
+    elif "android" in ua_lower:
+        device = "Android"
+    elif "macintosh" in ua_lower or "mac os" in ua_lower:
+        device = "macOS"
+    elif "windows" in ua_lower:
+        device = "Windows"
+    elif "linux" in ua_lower:
+        device = "Linux"
+    elif "telegram" in ua_lower or "bot" in ua_lower:
+        device = "bot"
+    elif "python" in ua_lower:
+        device = "script"
+
+    log.info("Client connected: ip=%s device=%s origin=%s", ip, device, origin or "-")
     clients.add(ws)
+    connected_at = time.monotonic()
     try:
         async for raw in ws:
             try:
@@ -228,27 +309,56 @@ async def handle_client(ws):
             msg_type = msg.get("type")
             if msg_type == "respond":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
+                text = msg.get("text", "")
+                if text.strip().lower() not in SAFE_RESPONSES:
+                    await ws.send(json.dumps({"type": "error", "message": "response not in allowlist"}))
+                    continue
                 remote = pane_remote_map.get(pane_id)
-                run_herdr("pane", "send-text", pane_id, msg["text"] + "\n", remote=remote)
+                log.info("Response from %s (%s): pane=%s text=%r", ip, device, pane_id, text)
+                run_herdr("pane", "send-text", pane_id, text + "\n", remote=remote)
             elif msg_type == "agent_event":
                 event_queue.put_nowait(msg)
             elif msg_type == "read_pane":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
                 lines = msg.get("lines", "30")
                 remote = pane_remote_map.get(pane_id)
                 content = run_herdr("pane", "read", pane_id, "--lines", str(lines), "--source", "recent", remote=remote)
                 await ws.send(json.dumps({"type": "pane_content", "pane_id": pane_id, "content": content}))
             elif msg_type == "send_keys":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
                 keys = msg.get("keys", [])
+                if not all(k in SAFE_KEYS for k in keys):
+                    await ws.send(json.dumps({"type": "error", "message": "keys contain disallowed values"}))
+                    continue
                 remote = pane_remote_map.get(pane_id)
+                log.info("Keys from %s (%s): pane=%s keys=%s", ip, device, pane_id, keys)
                 run_herdr("pane", "send-keys", pane_id, *keys, remote=remote)
             elif msg_type == "send_text":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
                 text = msg.get("text", "")
+                if not text or len(text) > 1000:
+                    await ws.send(json.dumps({"type": "error", "message": "text empty or too long"}))
+                    continue
                 remote = pane_remote_map.get(pane_id)
+                log.info("Text from %s (%s): pane=%s text=%r", ip, device, pane_id, text)
                 run_herdr("pane", "send-text", pane_id, text, remote=remote)
+    except (ConnectionClosedError, ConnectionClosedOK):
+        pass
     finally:
+        duration = int(time.monotonic() - connected_at)
+        log.info("Client disconnected: ip=%s device=%s duration=%ds", ip, device, duration)
         clients.discard(ws)
 
 
@@ -272,10 +382,10 @@ def start_mdns():
         )
         zc = Zeroconf()
         threading.Thread(target=zc.register_service, args=(info,), daemon=True).start()
-        print(f"mDNS registering at {ip}")
+        log.info("mDNS registering at %s", ip)
         return zc, info
     except Exception as e:
-        print(f"mDNS skipped: {e}")
+        log.warning("mDNS skipped: %s", e)
         return None, None
 
 
@@ -285,13 +395,13 @@ async def main():
     try:
         await loop.create_datagram_endpoint(UDPPlugin, local_addr=("127.0.0.1", 8376))
     except OSError:
-        print("UDP 8376 in use, plugin push disabled")
+        log.warning("UDP 8376 in use, plugin push disabled")
     asyncio.create_task(poll_loop())
     asyncio.create_task(event_push())
     server = await serve(handle_client, "0.0.0.0", WS_PORT, process_request=process_request)
     hosts = ["local"] + REMOTES
-    print(f"herdr-remote relay on :{WS_PORT} (WebSocket + HTTP POST)")
-    print(f"  polling: {', '.join(hosts)}")
+    log.info("herdr-remote relay on :%d (WebSocket + HTTP POST)", WS_PORT)
+    log.info("Polling: %s", ", ".join(hosts))
     stop = loop.create_future()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set_result, None)

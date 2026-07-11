@@ -27,8 +27,8 @@ class AgentCard(Static):
         status = self.agent.get("status", "unknown")
         color = {"blocked": "red", "working": "green", "idle": "dim"}.get(status, "dim")
         name = self.agent.get("agent", "?")
-        project = self.agent.get("project", "")
-        yield Label(f"[{color}]●[/] {project}/{name} [{color}]{status}[/]", markup=True)
+        label = self.agent.get("label", "") or self.agent.get("project", "")
+        yield Label(f"[{color}]●[/] {label}/{name} [{color}]{status}[/]", markup=True)
 
 
 class AgentColumn(Vertical):
@@ -57,7 +57,7 @@ class ApprovalPanel(Vertical):
         self.agent = agent
         self.styles.height = "auto"
         self.styles.border = ("round", "red")
-        self.border_title = f"⚠ {agent.get('agent', '?')} — {agent.get('project', '')}"
+        self.border_title = f"⚠ {agent.get('agent', '?')} — {agent.get('label', '') or agent.get('project', '')}"
 
     def compose(self) -> ComposeResult:
         prompt = self.agent.get("prompt", "Waiting for input...")
@@ -79,7 +79,7 @@ class ApprovalPanel(Vertical):
             self.post_message(self.Responded(self.agent["pane_id"], event.value.strip()))
 
 
-class HerdrRemoteTUI(App):
+class Herdr RemoteTUI(App):
     CSS = """
     #board { height: 1fr; }
     #approvals { height: auto; max-height: 40%; }
@@ -140,7 +140,7 @@ class HerdrRemoteTUI(App):
                 async with websockets.connect(RELAY_WS) as ws:
                     self._ws = ws
                     self.connected = True
-                    self.mutate_reactive(HerdrRemoteTUI.connected)
+                    self.mutate_reactive(Herdr RemoteTUI.connected)
                     self.recompose()
                     async for raw in ws:
                         try:
@@ -151,7 +151,7 @@ class HerdrRemoteTUI(App):
             except Exception:
                 self._ws = None
                 self.connected = False
-                self.mutate_reactive(HerdrRemoteTUI.connected)
+                self.mutate_reactive(Herdr RemoteTUI.connected)
                 self.recompose()
                 await asyncio.sleep(3)
 
@@ -191,4 +191,4 @@ class HerdrRemoteTUI(App):
 
 
 if __name__ == "__main__":
-    HerdrRemoteTUI().run()
+    Herdr RemoteTUI().run()
