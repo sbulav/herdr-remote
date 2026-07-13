@@ -309,7 +309,8 @@ function showSetup() {
 
 function handleMessage(msg) {
   if (msg.type === 'agents') {
-    // Track timeline on status changes
+    // Track timeline on status changes; preserve prompt/options across polls
+    const prevById = Object.fromEntries(agents.map(a => [a.pane_id, a]));
     for (const a of msg.agents) {
       const prev = prevStatuses[a.pane_id];
       if (prev && prev !== a.status) {
@@ -317,8 +318,14 @@ function handleMessage(msg) {
         if (timeline.length > 100) timeline.pop();
       }
       prevStatuses[a.pane_id] = a.status;
+      const old = prevById[a.pane_id];
+      if (a.status === 'blocked' && old) {
+        if (old.prompt && !a.prompt) a.prompt = old.prompt;
+        if (old.options && !a.options) a.options = old.options;
+      }
     }
     agents = msg.agents; render();
+    if (activePane) renderQuickActions(agents.find(x => x.pane_id === activePane));
   }
   else if (msg.type === 'blocked') {
     const a = agents.find(x => x.pane_id === msg.pane_id);
@@ -327,6 +334,7 @@ function handleMessage(msg) {
     timeline.unshift({project: msg.project, agent: msg.agent, status: 'blocked', time: new Date()});
     if (timeline.length > 100) timeline.pop();
     render();
+    if (activePane === msg.pane_id) renderQuickActions(agents.find(x => x.pane_id === msg.pane_id));
     notify(msg.agent || 'Agent', msg.project || '');
   } else if (msg.type === 'pane_content' && msg.pane_id === activePane) {
     document.getElementById('termContent').textContent = msg.content || '(empty)';
@@ -395,10 +403,39 @@ function ctxAction(action) {
   if (action === 'terminal') openTerminal(ctxTarget);
   else if (action === 'approve') {
     const a = agents.find(x => x.pane_id === ctxTarget);
-    if (a) respond('yes, single permission');
+    if (!a) return;
+    activePane = ctxTarget;
+    const opts = a.options || [];
+    const yes = opts.find(o => /yes|approve/i.test(o)) || opts[0] || '1. Yes';
+    respond(yes);
   }
   else if (action === 'read') { activePane = ctxTarget; refreshPane(); openTerminal(ctxTarget); }
   else if (action === 'interrupt') { ws.send(JSON.stringify({type:'send_keys',pane_id:ctxTarget,keys:['Ctrl+c']})); }
+}
+
+function optionClass(o) {
+  const s = o.toLowerCase();
+  if (s.includes('yes') || s.includes('approve') || s === 'y' || s.includes('allow once') || s === 'once') return 'btn-yes';
+  if (s.includes('trust') || s.includes('always')) return 'btn-trust';
+  return 'btn-no';
+}
+
+function optionLabel(o) {
+  // "1. Yes" -> "Yes"; "yes, single permission" -> "yes"; "Allow once" stays
+  const m = o.match(/^\d+\.\s+(.+)$/);
+  if (m) return m[1];
+  if (o.includes(',')) return o.split(',')[0];
+  return o;
+}
+
+function renderQuickActions(a) {
+  const qa = document.getElementById('quickActions');
+  if (!a || a.status !== 'blocked') { qa.innerHTML = ''; return; }
+  const opts = a.options || ['1. Yes', '2. No'];
+  qa.innerHTML = opts.map(o => {
+    const safe = o.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<button class="${optionClass(o)}" onclick="respond('${safe}')">${optionLabel(o)}</button>`;
+  }).join('');
 }
 
 function openTerminal(paneId) {
@@ -407,14 +444,7 @@ function openTerminal(paneId) {
   document.getElementById('termTitle').textContent = a?`${a.project} · ${a.agent}`:paneId;
   document.getElementById('agentListView').style.display = 'none';
   document.getElementById('terminalView').classList.add('active');
-  const qa = document.getElementById('quickActions');
-  if (a&&a.status==='blocked') {
-    const opts = a.options||['yes, single permission','trust, always allow','no (tab to edit)'];
-    qa.innerHTML = opts.map(o => {
-      const cls = o.includes('yes')||o.includes('approve')?'btn-yes':o.includes('trust')?'btn-trust':'btn-no';
-      return `<button class="${cls}" onclick="respond('${o.replace(/'/g,"\\'")}')">${o.split(',')[0]}</button>`;
-    }).join('');
-  } else qa.innerHTML='';
+  renderQuickActions(a);
   refreshPane();
   refreshInterval = setInterval(refreshPane, 3000);
 }

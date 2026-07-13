@@ -163,5 +163,78 @@ class StructuredOutputTests(unittest.TestCase):
         self.assertEqual(blocks[3]["text"], "auth.py")
 
 
+class DetectOptionsTests(unittest.TestCase):
+    def test_legacy_tool_permission(self):
+        text = (
+            "Do you want to allow this tool call?\n\n"
+            "> yes, single permission\n"
+            "> trust, always allow\n"
+            "> no (tab to edit)"
+        )
+        self.assertEqual(herdr_relay.detect_options(text), herdr_relay.TOOL_OPTIONS)
+
+    def test_subagent_options(self):
+        text = "approve all pending\nconfigure individually"
+        self.assertEqual(herdr_relay.detect_options(text), herdr_relay.SUBAGENT_OPTIONS)
+
+    def test_claude_numbered_yes_no(self):
+        text = (
+            "Ask rule Bash(git add *) overrides auto mode for this command.\n"
+            " /permissions to let auto mode decide\n\n"
+            " Do you want to proceed?\n"
+            " ❯ 1. Yes\n"
+            "   2. No\n"
+        )
+        self.assertEqual(herdr_relay.detect_options(text), ["1. Yes", "2. No"])
+
+    def test_claude_proceed_fallback_without_numbers(self):
+        text = "Do you want to proceed?\nSome other chrome"
+        self.assertEqual(herdr_relay.detect_options(text), ["1. Yes", "2. No"])
+
+    def test_claude_ask_rule_fallback(self):
+        text = "Ask rule Bash(git add *) overrides auto mode for this command."
+        self.assertEqual(herdr_relay.detect_options(text), ["1. Yes", "2. No"])
+
+    def test_opencode_permission_required(self):
+        text = (
+            "△ Permission required\n"
+            "  Bash · git status\n"
+            "  Allow once   Allow always   Reject\n"
+            "  ↔ select   enter confirm   esc dismiss\n"
+        )
+        self.assertEqual(herdr_relay.detect_options(text), herdr_relay.OPENCODE_OPTIONS)
+
+    def test_opencode_allow_once_phrase(self):
+        text = "Allow once\nAllow always\nReject\nPermission required"
+        self.assertEqual(herdr_relay.detect_options(text), herdr_relay.OPENCODE_OPTIONS)
+
+    def test_yn_style(self):
+        self.assertEqual(herdr_relay.detect_options("Continue? [y/n]"), ["y", "n"])
+        self.assertEqual(herdr_relay.detect_options("write to this file?\nproceed (y)"), ["y", "n"])
+
+    def test_respond_text_numbered_label(self):
+        self.assertEqual(herdr_relay.respond_text("1. Yes"), "1")
+        self.assertEqual(herdr_relay.respond_text("2. No"), "2")
+        self.assertEqual(
+            herdr_relay.respond_text("yes, single permission"),
+            "yes, single permission",
+        )
+
+    def test_respond_action_opencode_keys(self):
+        self.assertEqual(herdr_relay.respond_action("Allow once"), ("keys", ["Enter"]))
+        self.assertEqual(
+            herdr_relay.respond_action("Allow always"),
+            ("keys", ["Right", "Enter", "Enter"]),
+        )
+        self.assertEqual(herdr_relay.respond_action("Reject"), ("keys", ["Escape"]))
+        self.assertEqual(herdr_relay.respond_action("1. Yes"), ("text", "1"))
+        self.assertEqual(herdr_relay.respond_action("y"), ("text", "y"))
+        # Free-text deny must not be remapped to Escape keys
+        self.assertEqual(herdr_relay.respond_action("deny"), ("text", "deny"))
+
+    def test_unknown_prompt_returns_none(self):
+        self.assertIsNone(herdr_relay.detect_options("just some log output"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -101,6 +101,10 @@ final class RelayConnection {
     }
 
     private func runSSH(_ remote: String, _ args: String...) -> String {
+        runSSH(remote, arguments: Array(args))
+    }
+
+    private func runSSH(_ remote: String, arguments args: [String]) -> String {
         let process = Process()
         let password = KeychainHelper.getPassword(for: remote)
 
@@ -171,16 +175,47 @@ final class RelayConnection {
         if lower.contains("yes, single permission") {
             return ["yes, single permission", "trust, always allow", "no (tab to edit)"]
         }
-        if lower.contains("approve all pending") {
+        if lower.contains("approve all pending") || lower.contains("pending from subagents") {
             return ["approve all pending", "configure individually", "exit (cancel subagents)"]
         }
-        return ["yes, single permission", "trust, always allow", "no (tab to edit)"]
+        if lower.contains("permission required")
+            || (lower.contains("allow once") && lower.contains("allow always") && lower.contains("reject")) {
+            return ["Allow once", "Allow always", "Reject"]
+        }
+        // Claude Code numbered menus: "❯ 1. Yes" / "  2. No"
+        let pattern = #"(?:^|\n)[ \t]*[❯>]?[ \t]*(\d+)\.\s+(\S[^\n]*)"#
+        if let re = try? NSRegularExpression(pattern: pattern) {
+            let ns = text as NSString
+            let matches = re.matches(in: text, range: NSRange(location: 0, length: ns.length))
+            var seen: [String: String] = [:]
+            for m in matches {
+                let num = ns.substring(with: m.range(at: 1))
+                let label = ns.substring(with: m.range(at: 2)).trimmingCharacters(in: .whitespaces)
+                if seen[num] == nil { seen[num] = "\(num). \(label)" }
+            }
+            let opts = seen.keys.sorted { Int($0) ?? 0 < Int($1) ?? 0 }.compactMap { seen[$0] }
+            if opts.count >= 2 { return opts }
+        }
+        if lower.contains("do you want to proceed")
+            || lower.contains("do you want to allow")
+            || lower.contains("ask rule")
+            || lower.contains("/permissions to let auto mode decide") {
+            return ["1. Yes", "2. No"]
+        }
+        if lower.contains("[y/n]") || lower.contains("yes (y)") || lower.contains("proceed (y)") {
+            return ["y", "n"]
+        }
+        return ["1. Yes", "2. No"]
     }
 
     private func runHerdr(_ args: String...) -> String {
+        runHerdr(arguments: Array(args))
+    }
+
+    private func runHerdr(arguments args: [String]) -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: herdrPath)
-        process.arguments = Array(args)
+        process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -215,19 +250,58 @@ final class RelayConnection {
         isConnected = false
     }
 
+    private func respondKeystrokes(_ text: String) -> String {
+        // Numbered menu labels ("1. Yes") must send just the digit.
+        // OpenCode menus are handled by the relay (keys); direct mode maps here.
+        let lower = text.lowercased()
+        if let re = try? NSRegularExpression(pattern: #"^(\d+)\.\s+"#),
+           let m = re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
+            return (text as NSString).substring(with: m.range(at: 1))
+        }
+        if lower == "y" || lower == "yes" { return "y" }
+        if lower == "n" || lower == "no" { return "n" }
+        return text
+    }
+
+    private func respondDirectKeys(_ text: String) -> [String]? {
+        switch text.lowercased() {
+        case "allow once": return ["Enter"]
+        case "allow always", "always allow": return ["Right", "Enter", "Enter"]
+        case "reject": return ["Escape"]
+        default: return nil
+        }
+    }
+
     func send(response: ResponseMessage) {
         if mode == .direct {
             DispatchQueue.global(qos: .userInitiated).async { [self] in
                 let paneId = response.pane_id
-                // Check if this is a remote agent (id starts with "host:")
-                if let agent = agents.first(where: { $0.id == paneId }), agent.host != "local" {
-                    let realId = String(paneId.drop(while: { $0 != ":" }).dropFirst())
-                    _ = runSSH(agent.host, "herdr", "pane", "send-text", realId, response.text + "\n")
+                let host: String? = {
+                    if let agent = agents.first(where: { $0.id == paneId }), agent.host != "local" {
+                        return agent.host
+                    }
+                    return nil
+                }()
+                let realId = host.map { _ in String(paneId.drop(while: { $0 != ":" }).dropFirst()) } ?? paneId
+                if let keys = respondDirectKeys(response.text) {
+                    var args = ["pane", "send-keys", realId]
+                    args.append(contentsOf: keys)
+                    if let host {
+                        _ = runSSH(host, "herdr", arguments: args)
+                    } else {
+                        _ = runHerdr(arguments: args)
+                    }
                 } else {
-                    _ = runHerdr("pane", "send-text", paneId, response.text + "\n")
+                    let text = respondKeystrokes(response.text)
+                    if let host {
+                        _ = runSSH(host, "herdr", "pane", "send-text", realId, text + "\n")
+                    } else {
+                        _ = runHerdr("pane", "send-text", paneId, text + "\n")
+                    }
                 }
             }
         } else {
+            // Relay maps labels (incl. OpenCode keys) itself.
             guard let data = try? JSONEncoder().encode(response) else { return }
             task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
         }

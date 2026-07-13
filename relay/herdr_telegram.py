@@ -4,7 +4,7 @@
 # dependencies = ["python-telegram-bot>=21.0", "websockets>=14.0"]
 # ///
 """herdr-remote Telegram bot — monitor and approve agents from Telegram."""
-import asyncio, json, os, logging
+import asyncio, json, os, logging, re
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, ContextTypes, filters
@@ -400,13 +400,30 @@ SUBAGENT_BUTTONS = [
 ]
 
 
+def _option_label(opt: str) -> str:
+    if ", " in opt:
+        return opt.split(",", 1)[0]
+    m = re.match(r"^\d+\.\s+(.+)$", opt)
+    return m.group(1) if m else opt
+
+
+OPENCODE_BUTTONS = [
+    ("Allow once", "Allow once"),
+    ("Allow always", "Allow always"),
+    ("Reject", "Reject"),
+]
+
+
 def make_keyboard(pane_id: str, options: list[str] | None) -> InlineKeyboardMarkup:
-    if options and "trust" in " ".join(options).lower():
+    joined = " ".join(options or []).lower()
+    if options and "yes, single permission" in joined:
         buttons = TOOL_BUTTONS
-    elif options and "approve all" in " ".join(options).lower():
+    elif options and "approve all" in joined:
         buttons = SUBAGENT_BUTTONS
+    elif options and ("allow once" in joined or "allow always" in joined):
+        buttons = OPENCODE_BUTTONS
     else:
-        buttons = [(opt.split(",")[0], opt) for opt in (options or ["yes, single permission", "no (tab to edit)"])]
+        buttons = [(_option_label(opt), opt) for opt in (options or ["1. Yes", "2. No"])]
 
     keyboard = [
         [InlineKeyboardButton(label, callback_data=json.dumps({"pane_id": pane_id, "response": resp}))]

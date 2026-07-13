@@ -61,6 +61,10 @@ WEB="$DIR/web/index.html"
 grep -q "WebSocket" "$WEB" && grep -q "theme" "$WEB" && grep -q "sendKey" "$WEB" && grep -q "agentIcon" "$WEB"
 assert_eq "$?" "0" "has WebSocket, themes, keyboard, agent icons"
 
+echo "9b. web app numbered permission buttons"
+grep -q "renderQuickActions" "$WEB" && grep -q "optionLabel" "$WEB" && grep -q "1. Yes" "$WEB"
+assert_eq "$?" "0" "quick actions support numbered Yes/No"
+
 echo "10. web app no hardcoded secrets"
 ! grep -q "c4a2385e" "$WEB" && ! grep -q "graffold" "$WEB"
 assert_eq "$?" "0" "no secrets in web app"

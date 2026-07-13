@@ -102,8 +102,17 @@ final class RelayConnection {
         connectionState = .disconnected
     }
 
+    private func respondKeystrokes(_ text: String) -> String {
+        if let re = try? NSRegularExpression(pattern: #"^(\d+)\.\s+"#),
+           let m = re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
+            return (text as NSString).substring(with: m.range(at: 1))
+        }
+        return text
+    }
+
     func send(response: ResponseMessage) {
-        guard let data = try? JSONEncoder().encode(response) else { return }
+        let payload = ResponseMessage(pane_id: response.pane_id, text: respondKeystrokes(response.text))
+        guard let data = try? JSONEncoder().encode(payload) else { return }
         task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
     }
 

@@ -364,8 +364,9 @@ struct ApprovalPanel: View {
     }
 
     private func tint(for option: String) -> Color {
-        if option.contains("yes") || option.contains("approve") { return .green }
-        if option.contains("no") || option.contains("exit") || option.contains("cancel") { return .red }
+        let s = option.lowercased()
+        if s.contains("yes") || s.contains("approve") { return .green }
+        if s.contains("no") || s.contains("exit") || s.contains("cancel") { return .red }
         return .accentColor
     }
 }

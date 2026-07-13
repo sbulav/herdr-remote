@@ -26,13 +26,29 @@ export default {
       { pane_id: 'demo:6', agent: 'claude', status: 'working', project: 'nebula-ml', cwd: '/dev/nebula-ml', host: 'remote-2' },
     ];
 
-    const blockedPrompt = `Do you want to allow this tool call?\n\nTool: write_file\nPath: src/components/Graph.tsx\n\n> yes, single permission\n> trust, always allow\n> no (tab to edit)`;
+    const claudePrompt = `Ask rule Bash(git add *) overrides auto mode for this command.
+ /permissions to let auto mode decide
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. No`;
+    const opencodePrompt = `△ Permission required
+  Bash · git status
+  Allow once   Allow always   Reject
+  ↔ select   enter confirm   esc dismiss`;
 
     server.send(JSON.stringify({ type: 'agents', agents }));
     server.send(JSON.stringify({
       type: 'blocked', pane_id: 'demo:3', agent: 'kiro', project: 'orbit-ui',
-      prompt: blockedPrompt, host: 'local',
-      options: ['yes, single permission', 'trust, always allow', 'no (tab to edit)']
+      prompt: claudePrompt, host: 'local',
+      options: ['1. Yes', '2. No']
+    }));
+    // Also show an OpenCode-style permission on another agent
+    agents[1].status = 'blocked';
+    server.send(JSON.stringify({
+      type: 'blocked', pane_id: 'demo:2', agent: 'codex', project: 'nova-ingest',
+      prompt: opencodePrompt, host: 'local',
+      options: ['Allow once', 'Allow always', 'Reject']
     }));
 
     let interval = setInterval(() => {
@@ -42,10 +58,13 @@ export default {
       try {
         server.send(JSON.stringify({ type: 'agents', agents }));
         if (agents[idx].status === 'blocked') {
+          const useOpenCode = agents[idx].agent === 'codex' || agents[idx].agent === 'opencode' || Math.random() < 0.4;
           server.send(JSON.stringify({
             type: 'blocked', pane_id: agents[idx].pane_id, agent: agents[idx].agent,
-            project: agents[idx].project, prompt: blockedPrompt, host: agents[idx].host,
-            options: ['yes, single permission', 'trust, always allow', 'no (tab to edit)']
+            project: agents[idx].project,
+            prompt: useOpenCode ? opencodePrompt : claudePrompt,
+            host: agents[idx].host,
+            options: useOpenCode ? ['Allow once', 'Allow always', 'Reject'] : ['1. Yes', '2. No']
           }));
         }
       } catch { clearInterval(interval); }
