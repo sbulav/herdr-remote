@@ -1,55 +1,74 @@
 # herdr-remote
 
-Monitor and approve [herdr](https://herdr.dev) agents from your phone, menu bar, or Telegram -- no SSH required.
+Agent dashboard for [herdr](https://herdr.dev) -- menu bar, phone, Telegram. Zero config locally, free tunnel for remote.
 
-**[Try the live demo](https://herdr-demo.pages.dev)** -- no install, works on any phone
+**[Try the live demo](https://herdr-demo.pages.dev)**
 
-## Install (macOS -- 10 seconds)
+## Install (10 seconds)
 
-Download [Herdi.app](https://github.com/dcolinmorgan/herdr-remote/releases/latest) and drag to Applications. Done.
+Download [Herdi.app](https://github.com/dcolinmorgan/herdr-remote/releases/latest) and drag to Applications.
 
-The menu bar app monitors all your local herdr agents automatically -- no relay, no config, no account.
+Monitors all your local herdr agents automatically -- no relay, no config, no account.
 
-Or via terminal:
 ```bash
 curl -sL https://github.com/dcolinmorgan/herdr-remote/releases/latest/download/Herdi-0.5.0.dmg -o /tmp/Herdi.dmg && open /tmp/Herdi.dmg
 ```
 
+## What you get
+
+- **Live agent timeline** -- who worked when, who blocked, who finished
+- **One-tap approvals** from phone, menu bar, or Telegram
+- **Daily activity digest** -- `/digest` in Telegram shows working time + block count
+- **Terminal interaction** -- read output, send commands, interrupt agents remotely
+- **Notifications** -- know instantly when agents need you or finish
+- **11 themes** -- dark, herdr, light, sand, clay, dune, nord, rose, dracula, kanagawa, midnight
+
 ## Screenshots
 
-| Agent List | Terminal View |
+| Menu Bar App | Settings |
 |:--:|:--:|
-| ![Agent list](public/agent_list.jpeg) | ![Terminal interaction](public/terminal_view.jpeg) |
+| ![Menu bar](public/mac_main.png) | ![Settings](public/mac_settings.png) |
+
+| Web App | Terminal View |
+|:--:|:--:|
+| ![Agent list](public/agent_list.jpeg) | ![Terminal](public/terminal_view.jpeg) |
 
 ## Remote monitoring (phone/Telegram)
 
-For monitoring agents on remote machines or from your phone:
+For monitoring agents across machines or from your phone:
 
 ```bash
 herdr plugin install dcolinmorgan/herdr-push
-./relay/start.sh
+cd herdr-remote/relay && ./start.sh
 ```
 
 Open [herdr-demo.pages.dev](https://herdr-demo.pages.dev) on your phone, paste the tunnel URL.
 
-## Features
+## Telegram Bot
 
-- **macOS menu bar app** -- see all agents at a glance, approve from desktop (zero config)
-- **Web app** -- approve blocked agents from your phone with one tap
-- **Telegram bot** -- /agents, /read, /send, /reply, /trust, /interrupt
-- **Terminal TUI** -- kanban dashboard in a herdr pane
-- **Agent timeline** -- track when agents worked, blocked, and finished
-- **Daily digest** -- Telegram summary of agent activity
-- **11 themes** -- dark, herdr, light, sand, clay, dune, nord, rose, dracula, kanagawa, midnight
-- **Token auth** -- shared secret protects your relay
-- **Zero-dep plugin** -- [`herdr-push`](https://github.com/dcolinmorgan/herdr-push) uses only `curl`
+Full agent interaction:
+
+```bash
+export HERDR_TG_TOKEN="your-token"
+export HERDR_TG_CHAT_ID="your-chat-id"
+uv run relay/herdr_telegram.py
+```
+
+| Command | Action |
+|---------|--------|
+| `/agents` | List all with status |
+| `/read` | Read agent output |
+| `/reply` | Read + respond in one flow |
+| `/send` | Send text to an agent |
+| `/trust` | Trust all tools for blocked agent |
+| `/interrupt` | Send Ctrl+C |
+| `/digest` | Today's activity summary |
 
 ## Architecture
 
 ```
                     ┌──────────────────────────────┐
-                    │  macOS Menu Bar (Herdi.app)   │ ← zero config, local
-                    │  monitors herdr directly      │
+                    │  macOS Menu Bar (Herdi.app)   │ <- zero config
                     └──────────────────────────────┘
 
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
@@ -60,61 +79,24 @@ Open [herdr-demo.pages.dev](https://herdr-demo.pages.dev) on your phone, paste t
        └───── WebSocket ──┴──────────────────┘
                    │
         ┌──────────┴──────────┐
-        │   relay (:8375)     │  ← Cloudflare tunnel
-        │   WS + HTTP POST    │
+        │   relay (:8375)     │  <- Cloudflare tunnel
         └──────────┬──────────┘
                    │
      ┌─────────────┼─────────────┐
      │ local poll  │ herdr-push  │
      │ (herdr CLI) │ (HTTP POST) │
-     │             │             │
-  ┌──┴──┐    ┌────┴────┐   ┌────┴────┐
-  │herdr│    │herdr    │   │herdr    │
-  │local│    │remote A │   │remote B │
-  └─────┘    └─────────┘   └─────────┘
+     └──────┬──────┘──────┬──────┘
+         ┌──┴──┐     ┌────┴────┐
+         │herdr│     │herdr    │
+         │local│     │remote   │
+         └─────┘     └─────────┘
 ```
-
-## Telegram Bot
-
-Full agent interaction from Telegram:
-
-```bash
-export HERDR_TG_TOKEN="your-token"
-export HERDR_TG_CHAT_ID="your-chat-id"
-uv run relay/herdr_telegram.py
-```
-
-Commands: `/agents` `/status` `/read` `/reply` `/send` `/trust` `/interrupt`
-
-Notifications when agents block or finish.
-
-## Web App
-
-**[herdr-demo.pages.dev](https://herdr-demo.pages.dev)**
-
-- Tap any agent to open a live terminal view
-- Special mobile keyboard: Tab, Esc, ^C, y/n + floating arrow d-pad
-- Agent icons: Kiro, Codex, Claude, Grok, Copilot auto-detected
-- Context menu: open terminal, approve, read output, interrupt
-- Quick-action buttons for blocked agents (yes/trust/no)
-- Browser notifications when agents block
-- PWA -- add to Home Screen for app-like experience
 
 ## Terminal TUI
 
 ```bash
 uv run relay/herdr_tui.py
 ```
-
-## Relay Setup
-
-```bash
-git clone https://github.com/dcolinmorgan/herdr-remote
-cd herdr-remote/relay
-./start.sh
-```
-
-Starts relay + Cloudflare tunnel, prints URL. See [QUICKSTART.md](QUICKSTART.md) for details.
 
 ## Token Auth
 
@@ -129,3 +111,4 @@ uv run relay/herdr_relay.py
 - Python 3.10+ with [uv](https://docs.astral.sh/uv/) (relay/TUI/bot)
 - `cloudflared` (for remote access)
 - herdr 0.7+
+- Zero-dep plugin: [`herdr-push`](https://github.com/dcolinmorgan/herdr-push)
