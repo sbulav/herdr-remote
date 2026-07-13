@@ -7,8 +7,8 @@ from relay import herdr_relay
 class StructuredOutputTests(unittest.TestCase):
     def test_claude_project_dir(self):
         self.assertEqual(
-            herdr_relay.claude_project_dir("/Users/me/git_priv/herdr-mobile"),
-            "-Users-me-git-priv-herdr-mobile",
+            herdr_relay.claude_project_dir("/Users/me/src/herdr-mobile"),
+            "-Users-me-src-herdr-mobile",
         )
         self.assertEqual(
             herdr_relay.claude_project_dir("/home/me/my_app.v2"),
