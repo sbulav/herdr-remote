@@ -133,12 +133,12 @@ def run_herdr(*args, remote=None):
 
 
 def get_agents_from_host(remote=None, host_id=None):
-    raw = run_herdr("pane", "list", remote=remote)
+    online, raw = run_herdr_checked("pane", "list", remote=remote)
     host_label = host_id or remote or "local"
     try:
         data = json.loads(raw)
         panes = data.get("result", {}).get("panes", [])
-        return [
+        agents = [
             {
                 "pane_id": p["pane_id"],
                 "agent": p.get("agent", ""),
@@ -151,19 +151,25 @@ def get_agents_from_host(remote=None, host_id=None):
             for p in panes if p.get("agent")
         ]
     except (json.JSONDecodeError, KeyError):
-        return []
+        agents = []
+    return agents, online
 
 
 def get_all_agents():
     if HOST_TARGETS:
         agents = []
+        hosts = []
         for host_id, remote in HOST_TARGETS.items():
-            agents.extend(get_agents_from_host(remote=remote, host_id=host_id))
+            host_agents, online = get_agents_from_host(remote=remote, host_id=host_id)
+            agents.extend(host_agents)
+            hosts.append({"host_id": host_id, "online": online})
     else:
-        agents = get_agents_from_host(remote=None)
+        agents, _ = get_agents_from_host(remote=None)
         for remote in REMOTES:
-            agents.extend(get_agents_from_host(remote=remote))
-    return agents
+            remote_agents, _ = get_agents_from_host(remote=remote)
+            agents.extend(remote_agents)
+        hosts = []
+    return agents, hosts
 
 
 def read_pane(pane_id, remote=None):
@@ -556,7 +562,7 @@ async def broadcast(msg):
 
 async def poll_loop():
     while True:
-        agents = get_all_agents()
+        agents, hosts = get_all_agents()
         current_pane_ids = {a["pane_id"] for a in agents}
         pane_remote_map.clear()
         session_target_map.clear()
@@ -580,7 +586,7 @@ async def poll_loop():
         await broadcast({
             "type": "agents", "agents": agents,
             "presets": public_presets(),
-            "hosts": [{"host_id": host_id, "online": True} for host_id in HOST_TARGETS],
+            "hosts": hosts,
         })
         for a in agents:
             pid, status = a["pane_id"], a["status"]

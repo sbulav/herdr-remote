@@ -1,7 +1,30 @@
 import json
 import unittest
+from unittest.mock import patch
 
 from relay import herdr_relay
+
+
+class HostStatusTests(unittest.TestCase):
+    @patch.object(herdr_relay, "HOST_TARGETS", {"mba13": "mba", "mz": "mz"})
+    @patch.object(herdr_relay, "run_herdr_checked")
+    def test_host_status_reflects_poll_success(self, run_herdr_checked):
+        empty_result = json.dumps({"result": {"panes": []}})
+        run_herdr_checked.side_effect = [
+            (False, ""),
+            (True, empty_result),
+        ]
+
+        agents, hosts = herdr_relay.get_all_agents()
+
+        self.assertEqual(agents, [])
+        self.assertEqual(
+            hosts,
+            [
+                {"host_id": "mba13", "online": False},
+                {"host_id": "mz", "online": True},
+            ],
+        )
 
 
 class StructuredOutputTests(unittest.TestCase):
