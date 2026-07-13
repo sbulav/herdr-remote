@@ -1,55 +1,95 @@
 #!/bin/bash
 set -e
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_FILE="$HOME/.config/herdr-remote/config.env"
+WS_PORT="${HERDR_RELAY_PORT:-8375}"
 
-# Kill any existing relay
-lsof -ti :8375 | xargs kill -9 2>/dev/null || true
-sleep 1
+RELAY_PID=""
+TUNNEL_PID=""
 
-echo "🐑 herdr-remote"
+cleanup() {
+    echo ""
+    echo "Shutting down..."
+    [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null && wait "$TUNNEL_PID" 2>/dev/null
+    [ -n "$RELAY_PID" ] && kill "$RELAY_PID" 2>/dev/null && wait "$RELAY_PID" 2>/dev/null
+    echo "Done."
+    exit 0
+}
 
-# Start relay
+trap cleanup INT TERM EXIT
+
+echo "herdr-remote relay"
+echo ""
+
+# Load config if available
+[ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
+
+# 1. Start relay
+echo "Starting relay on :$WS_PORT..."
 uv run "$SCRIPT_DIR/herdr_relay.py" &
 RELAY_PID=$!
 sleep 2
 
-if ! kill -0 $RELAY_PID 2>/dev/null; then
-    echo "✗ Failed to start relay"; exit 1
+if ! kill -0 "$RELAY_PID" 2>/dev/null; then
+    echo "Error: Relay failed to start. Check if port $WS_PORT is in use."
+    echo "  lsof -iTCP:$WS_PORT"
+    RELAY_PID=""
+    exit 1
 fi
+echo "Relay running (pid $RELAY_PID)"
 
-# Start tunnel if cloudflared available
+# 2. Start tunnel (if cloudflared available)
 if command -v cloudflared >/dev/null 2>&1; then
-    LOGFILE=$(mktemp)
-    cloudflared tunnel --url http://localhost:8375 > "$LOGFILE" 2>&1 &
-    CF_PID=$!
+    TUNNEL_MODE="${HERDR_TUNNEL_MODE:-temp}"
 
-    # Wait for tunnel URL
-    for i in $(seq 1 15); do
-        URL=$(grep -o 'https://[^ ]*\.trycloudflare.com' "$LOGFILE" 2>/dev/null | tail -1)
-        [ -n "$URL" ] && break
-        sleep 1
-    done
-    rm -f "$LOGFILE"
-
-    if [ -n "$URL" ]; then
-        WS_URL="wss://$(echo $URL | sed 's|https://||')"
-        echo "✓ Ready"
-        echo ""
-        echo "  $WS_URL"
-        echo ""
-        echo "  Phone: herdr-remote.pages.dev → ⚙ → paste URL above"
-        echo "  Plugin: herdr plugin install dcolinmorgan/herdr-push"
-        echo "          echo 'HERDR_RELAY=$URL' > \"\$(herdr plugin config-dir herdr.push)/.env\""
-        echo ""
-    else
-        echo "✗ Tunnel failed. Relay still running on ws://localhost:8375"
+    if [ "$TUNNEL_MODE" = "named" ] && [ -n "$HERDR_TUNNEL_NAME" ]; then
+        echo "Starting named tunnel ($HERDR_TUNNEL_NAME)..."
+        CF_CONFIG="$HOME/.cloudflared/config-herdr.yml"
+        if [ -f "$CF_CONFIG" ]; then
+            cloudflared tunnel --config "$CF_CONFIG" run "$HERDR_TUNNEL_NAME" &
+            TUNNEL_PID=$!
+        else
+            echo "Warning: Tunnel config not found at $CF_CONFIG"
+            echo "Run install-service.sh to configure the named tunnel."
+            echo "Falling back to temp tunnel..."
+            TUNNEL_MODE="temp"
+        fi
     fi
 
-    trap "kill $RELAY_PID $CF_PID 2>/dev/null" EXIT
-    wait $RELAY_PID
+    if [ "$TUNNEL_MODE" = "temp" ]; then
+        echo "Starting temp tunnel..."
+        cloudflared tunnel --url "http://localhost:$WS_PORT" 2>&1 &
+        TUNNEL_PID=$!
+        sleep 4
+
+        if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+            echo "Warning: Tunnel failed to start. Relay still running locally."
+            TUNNEL_PID=""
+        else
+            # Extract URL from cloudflared output
+            TUNNEL_URL=$(grep -o 'https://[^ ]*\.trycloudflare\.com' /proc/$TUNNEL_PID/fd/1 2>/dev/null || true)
+            # Fallback: check recent log output
+            if [ -z "$TUNNEL_URL" ]; then
+                sleep 2
+                echo ""
+                echo "Tunnel starting... URL will appear below:"
+                echo "(If not visible, check: ps aux | grep cloudflared)"
+            fi
+        fi
+    fi
+
+    if [ "$TUNNEL_MODE" = "none" ]; then
+        echo "Tunnel disabled (config: HERDR_TUNNEL_MODE=none)"
+    fi
 else
-    echo "✓ Relay on ws://localhost:8375"
-    echo "  Install cloudflared for remote access: brew install cloudflared"
-    trap "kill $RELAY_PID 2>/dev/null" EXIT
-    wait $RELAY_PID
+    echo "cloudflared not found — running local only."
+    echo "Install: brew install cloudflared"
 fi
+
+echo ""
+echo "Ready. Press Ctrl+C to stop."
+echo ""
+
+# Wait for relay (primary process)
+wait "$RELAY_PID"
