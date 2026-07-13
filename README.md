@@ -29,9 +29,9 @@ curl -sL https://github.com/dcolinmorgan/herdr-remote/releases/latest/download/H
 |:--:|:--:|
 | ![Menu bar](public/mac_main.png) | ![Settings](public/mac_settings.png) |
 
-| Web App | Terminal View |
+| Agent List | Terminal View |
 |:--:|:--:|
-| ![Agent list](public/agent_list.jpeg) | ![Terminal](public/terminal_view.jpeg) |
+| ![Agent list](public/herdr-remote_main.png) | ![Terminal](public/herdr-remote_nokeys.png) |
 
 ## Remote monitoring (phone/Telegram)
 
