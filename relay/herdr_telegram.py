@@ -26,6 +26,7 @@ agents: list[dict] = []       # current agent list from relay
 prev_statuses: dict[str, str] = {}  # pane_id -> last known status
 relay_connected = False
 send_target: str = ""         # pane_id for next free-text message (set by /send picker)
+daily_stats: dict[str, dict] = {}  # pane_id -> {agent, project, blocked_count, working_mins, last_change}
 
 
 # --- Relay communication ---
@@ -280,6 +281,24 @@ async def cmd_trust(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Trusted {match['project']} (always allow)")
 
 
+async def cmd_digest(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Handle /digest — show today's agent activity summary."""
+    if not daily_stats:
+        await update.message.reply_text("No activity recorded yet today.")
+        return
+
+    import time
+    lines = ["Today's activity:\n"]
+    sorted_agents = sorted(daily_stats.values(), key=lambda x: x.get("working_mins", 0), reverse=True)
+    for s in sorted_agents:
+        blocked = f", blocked {s['blocked_count']}x" if s.get("blocked_count") else ""
+        mins = s.get("working_mins", 0)
+        time_str = f"{mins}m" if mins < 60 else f"{mins//60}h{mins%60}m"
+        lines.append(f"  {s['project']} ({s['agent']}): {time_str} working{blocked}")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 # --- Callback handler (buttons) ---
 
 async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -429,12 +448,26 @@ async def relay_listener(app: Application):
                         new_agents = msg.get("agents", [])
                         # Detect status transitions
                         if CHAT_ID:
+                            import time
+                            now = time.time()
                             for a in new_agents:
                                 pid = a["pane_id"]
                                 new_status = a.get("status", "unknown")
                                 old_status = prev_statuses.get(pid)
+
+                                # Update daily stats
+                                if pid not in daily_stats:
+                                    daily_stats[pid] = {"agent": a.get("agent",""), "project": a.get("project",""), "blocked_count": 0, "working_mins": 0, "last_change": now}
+                                ds = daily_stats[pid]
+                                if old_status == "working" and old_status != new_status:
+                                    elapsed = (now - ds["last_change"]) / 60
+                                    ds["working_mins"] += int(elapsed)
+                                if new_status == "blocked" and old_status != "blocked":
+                                    ds["blocked_count"] += 1
+                                if old_status != new_status:
+                                    ds["last_change"] = now
+
                                 if old_status and old_status != new_status:
-                                    # Notify on working/blocked -> idle (agent finished)
                                     if new_status == "idle" and old_status in ("working", "blocked"):
                                         try:
                                             await app.bot.send_message(
@@ -472,6 +505,7 @@ def main():
     app.add_handler(CommandHandler("reply", cmd_reply))
     app.add_handler(CommandHandler("send", cmd_send))
     app.add_handler(CommandHandler("trust", cmd_trust))
+    app.add_handler(CommandHandler("digest", cmd_digest))
     app.add_handler(CommandHandler("interrupt", cmd_interrupt))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

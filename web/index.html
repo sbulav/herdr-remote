@@ -111,6 +111,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
   <span class="dot" id="statusDot"></span>
   <h1>🐑 herdr</h1>
   <span id="agentCount" style="font-size:0.7rem;color:var(--muted)"></span>
+  <button onclick="toggleTimeline()">🕐</button>
   <button onclick="toggleSettings()">⚙</button>
 </div>
 
@@ -136,6 +137,10 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 
 <div class="view" id="agentListView">
   <div class="agents" id="agents"></div>
+</div>
+
+<div class="view" id="timelineView" style="display:none;padding:12px;">
+  <div id="timelineList" style="font-family:monospace;font-size:0.75rem;line-height:1.8;"></div>
 </div>
 
 <div class="terminal-view" id="terminalView">
@@ -169,8 +174,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 </div>
 
 <script>
-const THEMES = ['dark','light','nord','solarized','rose'];
+const THEMES = ['dark','herdr','light','sand','clay','dune','nord','rose','dracula','kanagawa','midnight'];
 let ws = null, agents = [], activePane = null, refreshInterval = null, userScrolledUp = false;
+let timeline = [], prevStatuses = {};
 
 // Settings — auto-detect relay when served from same origin
 const autoRelayUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
@@ -200,11 +206,31 @@ function toggleSettings() {
   const show = s.style.display !== 'block';
   s.style.display = show ? 'block' : 'none';
   document.getElementById('agentListView').style.display = show ? 'none' : '';
+  document.getElementById('timelineView').style.display = 'none';
   if (show) {
     document.getElementById('settingsStatus').innerHTML = ws && ws.readyState === 1
       ? `<span style="color:var(--green)">● Connected</span> · ${agents.length} agents`
       : `<span style="color:var(--red)">● Disconnected</span>`;
   }
+}
+
+function toggleTimeline() {
+  const t = document.getElementById('timelineView');
+  const show = t.style.display !== 'block';
+  t.style.display = show ? 'block' : 'none';
+  document.getElementById('agentListView').style.display = show ? 'none' : '';
+  document.getElementById('settingsView').style.display = 'none';
+  if (show) renderTimeline();
+}
+
+function renderTimeline() {
+  const el = document.getElementById('timelineList');
+  if (!timeline.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px">No activity yet. Status changes appear here.</p>'; return; }
+  el.innerHTML = timeline.map(e => {
+    const t = e.time.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const color = e.status==='blocked'?'var(--red)':e.status==='working'?'var(--green)':'var(--muted)';
+    return `<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">${t}</span><span style="flex:1">${e.project} (${e.agent})</span><span style="color:${color}">${e.status}</span></div>`;
+  }).join('');
 }
 
 function saveAndConnect() {
@@ -261,11 +287,24 @@ function tryDemo() {
 }
 
 function handleMessage(msg) {
-  if (msg.type === 'agents') { agents = msg.agents; render(); }
+  if (msg.type === 'agents') {
+    // Track timeline on status changes
+    for (const a of msg.agents) {
+      const prev = prevStatuses[a.pane_id];
+      if (prev && prev !== a.status) {
+        timeline.unshift({project: a.project, agent: a.agent, status: a.status, time: new Date()});
+        if (timeline.length > 100) timeline.pop();
+      }
+      prevStatuses[a.pane_id] = a.status;
+    }
+    agents = msg.agents; render();
+  }
   else if (msg.type === 'blocked') {
     const a = agents.find(x => x.pane_id === msg.pane_id);
     if (a) { a.status='blocked'; a.prompt=msg.prompt; a.options=msg.options; }
     else agents.push({...msg, status:'blocked'});
+    timeline.unshift({project: msg.project, agent: msg.agent, status: 'blocked', time: new Date()});
+    if (timeline.length > 100) timeline.pop();
     render();
   } else if (msg.type === 'pane_content' && msg.pane_id === activePane) {
     const el = document.getElementById('termContent');
