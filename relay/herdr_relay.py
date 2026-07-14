@@ -802,7 +802,7 @@ async def handle_client(ws):
                     if subscriptions.get(ws) == pane_id:
                         stream_sigs[(id(ws), pane_id)] = sig
                 await ws.send(json.dumps(payload))
-                options = detect_options(content)
+                options = detect_options(content) if last_statuses.get(pane_id) == "blocked" else None
                 if options:
                     await ws.send(json.dumps({
                         "type": "blocked",
