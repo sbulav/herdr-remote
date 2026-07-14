@@ -111,6 +111,41 @@ class PaneChromeTests(unittest.TestCase):
 
 
 class StructuredOutputTests(unittest.TestCase):
+    def test_read_pane_returns_dialog_for_existing_permission_prompt(self):
+        class Socket:
+            def __init__(self):
+                self.requests = iter([
+                    json.dumps({"type": "read_pane", "pane_id": "pane-1", "lines": 30})
+                ])
+                self.sent = []
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                try:
+                    return next(self.requests)
+                except StopIteration:
+                    raise StopAsyncIteration
+
+            async def send(self, message):
+                self.sent.append(json.loads(message))
+
+        socket = Socket()
+        prompt = "△Permission required\n#Pushes mobile rendering fix to origin\n$ git push origin main"
+        with (
+            patch.object(herdr_relay, "run_herdr", return_value=prompt),
+            patch.object(herdr_relay, "pane_blocks", return_value=(None, None)),
+        ):
+            asyncio.run(herdr_relay.handle_client(socket))
+
+        self.assertEqual(
+            [message["type"] for message in socket.sent],
+            ["pane_content", "blocked"],
+        )
+        self.assertEqual(socket.sent[1]["prompt"], prompt)
+        self.assertEqual(socket.sent[1]["options"], herdr_relay.OPENCODE_OPTIONS)
+
     def test_claude_project_dir(self):
         self.assertEqual(
             herdr_relay.claude_project_dir("/Users/me/src/herdr-mobile"),

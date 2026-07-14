@@ -802,6 +802,14 @@ async def handle_client(ws):
                     if subscriptions.get(ws) == pane_id:
                         stream_sigs[(id(ws), pane_id)] = sig
                 await ws.send(json.dumps(payload))
+                options = detect_options(content)
+                if options:
+                    await ws.send(json.dumps({
+                        "type": "blocked",
+                        "pane_id": pane_id,
+                        "prompt": content[:500],
+                        "options": options,
+                    }))
             elif msg_type == "subscribe_pane":
                 pane_id = msg.get("pane_id")
                 if pane_id in pane_cwd_map:
