@@ -8,6 +8,39 @@ from unittest.mock import patch
 from relay import herdr_relay
 
 
+class RelayLifecycleTests(unittest.TestCase):
+    def test_broadcast_tolerates_disconnect_during_send(self):
+        class Socket:
+            async def send(self, _message):
+                herdr_relay.clients.discard(self)
+
+        async def run():
+            sockets = {Socket(), Socket()}
+            herdr_relay.clients.update(sockets)
+            try:
+                await herdr_relay.broadcast({"type": "agents", "agents": []})
+            finally:
+                herdr_relay.clients.clear()
+
+        asyncio.run(run())
+
+    def test_background_failure_reaches_main_waiter(self):
+        async def run():
+            stop = asyncio.get_running_loop().create_future()
+
+            async def fail():
+                raise RuntimeError("poll failed")
+
+            task = asyncio.create_task(fail(), name="poll-loop")
+            task.add_done_callback(
+                lambda completed: herdr_relay.fail_on_background_exit(completed, stop)
+            )
+            with self.assertRaisesRegex(RuntimeError, "poll failed"):
+                await stop
+
+        asyncio.run(run())
+
+
 class HostStatusTests(unittest.TestCase):
     @patch.object(herdr_relay, "HOST_TARGETS", {"mba13": "mba", "mz": "mz"})
     @patch.object(herdr_relay, "run_herdr_checked")

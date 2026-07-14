@@ -575,12 +575,25 @@ def pane_blocks(pane_id):
 async def broadcast(msg):
     data = json.dumps(msg)
     dead = set()
-    for ws in clients:
+    # Disconnect cleanup mutates clients while send() yields to the event loop.
+    for ws in clients.copy():
         try:
             await ws.send(data)
         except Exception:
             dead.add(ws)
     clients.difference_update(dead)
+
+
+def fail_on_background_exit(task, stop):
+    if stop.done():
+        return
+    if task.cancelled():
+        stop.set_exception(RuntimeError(f"{task.get_name()} was cancelled"))
+        return
+    exception = task.exception()
+    if exception is None:
+        exception = RuntimeError(f"{task.get_name()} exited unexpectedly")
+    stop.set_exception(exception)
 
 
 async def poll_loop():
@@ -923,20 +936,30 @@ async def main():
         await loop.create_datagram_endpoint(UDPPlugin, local_addr=("127.0.0.1", 8376))
     except OSError:
         print("UDP 8376 in use, plugin push disabled")
-    asyncio.create_task(poll_loop())
-    asyncio.create_task(event_push())
     server = await serve(handle_client, "0.0.0.0", WS_PORT, process_request=process_request)
+    background_tasks = [
+        asyncio.create_task(poll_loop(), name="poll-loop"),
+        asyncio.create_task(event_push(), name="event-push"),
+    ]
     hosts = ["local"] + REMOTES
     print(f"herdr-remote relay on :{WS_PORT} (WebSocket + HTTP POST)")
     print(f"  polling: {', '.join(hosts)}")
     stop = loop.create_future()
+    for task in background_tasks:
+        task.add_done_callback(lambda completed: fail_on_background_exit(completed, stop))
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set_result, None)
-    await stop
-    server.close()
-    if zc and info:
-        zc.unregister_service(info)
-        zc.close()
+    try:
+        await stop
+    finally:
+        server.close()
+        await server.wait_closed()
+        for task in background_tasks:
+            task.cancel()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+        if zc and info:
+            zc.unregister_service(info)
+            zc.close()
 
 
 if __name__ == "__main__":
