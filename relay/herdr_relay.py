@@ -119,12 +119,21 @@ def session_id(host_id, pane_id):
 def run_herdr_checked(*args, remote=None):
     try:
         if remote:
-            cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", remote, HERDR, *args]
+            cmd = [
+                "ssh",
+                "-o", "ConnectTimeout=5",
+                "-o", "ServerAliveInterval=3",
+                "-o", "ServerAliveCountMax=2",
+                "-o", "BatchMode=yes",
+                remote, HERDR, *args,
+            ]
         else:
             cmd = [HERDR, *args]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         return r.returncode == 0, r.stdout.strip()
-    except Exception:
+    except Exception as exc:
+        if remote:
+            print(f"herdr poll failed for {remote}: {exc!r}", flush=True)
         return False, ""
 
 
@@ -155,20 +164,33 @@ def get_agents_from_host(remote=None, host_id=None):
     return agents, online
 
 
-def get_all_agents():
+async def get_all_agents():
     if HOST_TARGETS:
-        agents = []
-        hosts = []
-        for host_id, remote in HOST_TARGETS.items():
-            host_agents, online = get_agents_from_host(remote=remote, host_id=host_id)
-            agents.extend(host_agents)
-            hosts.append({"host_id": host_id, "online": online})
+        targets = list(HOST_TARGETS.items())
+        results = await asyncio.gather(*(
+            asyncio.to_thread(
+                get_agents_from_host,
+                remote=remote,
+                host_id=host_id,
+            )
+            for host_id, remote in targets
+        ))
+        hosts = [
+            {"host_id": host_id, "online": online}
+            for (host_id, _remote), (_host_agents, online) in zip(targets, results)
+        ]
     else:
-        agents, _ = get_agents_from_host(remote=None)
-        for remote in REMOTES:
-            remote_agents, _ = get_agents_from_host(remote=remote)
-            agents.extend(remote_agents)
+        targets = [(None, None), *((None, remote) for remote in REMOTES)]
+        results = await asyncio.gather(*(
+            asyncio.to_thread(get_agents_from_host, remote=remote)
+            for _host_id, remote in targets
+        ))
         hosts = []
+    agents = [
+        agent
+        for host_agents, _online in results
+        for agent in host_agents
+    ]
     return agents, hosts
 
 
@@ -562,7 +584,7 @@ async def broadcast(msg):
 
 async def poll_loop():
     while True:
-        agents, hosts = get_all_agents()
+        agents, hosts = await get_all_agents()
         current_pane_ids = {a["pane_id"] for a in agents}
         pane_remote_map.clear()
         session_target_map.clear()

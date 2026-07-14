@@ -1,4 +1,7 @@
+import asyncio
 import json
+import subprocess
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -15,7 +18,7 @@ class HostStatusTests(unittest.TestCase):
             (True, empty_result),
         ]
 
-        agents, hosts = herdr_relay.get_all_agents()
+        agents, hosts = asyncio.run(herdr_relay.get_all_agents())
 
         self.assertEqual(agents, [])
         self.assertEqual(
@@ -25,6 +28,64 @@ class HostStatusTests(unittest.TestCase):
                 {"host_id": "mz", "online": True},
             ],
         )
+
+    @patch.object(herdr_relay, "HOST_TARGETS", {"host-a": "a", "host-b": "b"})
+    @patch.object(herdr_relay, "get_agents_from_host")
+    def test_hosts_are_polled_concurrently(self, get_agents_from_host):
+        barrier = threading.Barrier(2, timeout=1)
+
+        def poll_host(*, remote, host_id):
+            barrier.wait()
+            return ([{"pane_id": remote}], True)
+
+        get_agents_from_host.side_effect = poll_host
+
+        agents, hosts = asyncio.run(herdr_relay.get_all_agents())
+
+        self.assertEqual(agents, [{"pane_id": "a"}, {"pane_id": "b"}])
+        self.assertEqual(
+            hosts,
+            [
+                {"host_id": "host-a", "online": True},
+                {"host_id": "host-b", "online": True},
+            ],
+        )
+
+    @patch.object(herdr_relay.subprocess, "run")
+    def test_remote_poll_uses_keepalives(self, run):
+        run.return_value.returncode = 0
+        run.return_value.stdout = "ok\n"
+
+        self.assertEqual(
+            herdr_relay.run_herdr_checked("pane", "list", remote="workstation"),
+            (True, "ok"),
+        )
+        run.assert_called_once_with(
+            [
+                "ssh",
+                "-o", "ConnectTimeout=5",
+                "-o", "ServerAliveInterval=3",
+                "-o", "ServerAliveCountMax=2",
+                "-o", "BatchMode=yes",
+                "workstation", herdr_relay.HERDR, "pane", "list",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+    @patch.object(herdr_relay.subprocess, "run")
+    def test_remote_poll_reports_failures(self, run):
+        run.side_effect = subprocess.TimeoutExpired("ssh", 15)
+
+        with patch("builtins.print") as print_message:
+            result = herdr_relay.run_herdr_checked(
+                "pane", "list", remote="workstation"
+            )
+
+        self.assertEqual(result, (False, ""))
+        print_message.assert_called_once()
+        self.assertIn("workstation", print_message.call_args.args[0])
 
 
 class StructuredOutputTests(unittest.TestCase):
