@@ -88,6 +88,28 @@ class HostStatusTests(unittest.TestCase):
         self.assertIn("workstation", print_message.call_args.args[0])
 
 
+class PaneChromeTests(unittest.TestCase):
+    @patch.object(herdr_relay, "run_herdr")
+    def test_read_pane_filters_heavy_opencode_chrome(self, run_herdr):
+        run_herdr.return_value = "\n".join(
+            [
+                "┃ Permission required: access external directory ┃",
+                "╹▀▀▀▀▀▀▀▀",
+                "⬝⬝⬝⬝ esc interrupt",
+            ]
+        )
+
+        self.assertEqual(
+            herdr_relay.read_pane("pane-1"),
+            "┃ Permission required: access external directory ┃",
+        )
+
+    def test_meaningful_status_with_footer_is_not_all_chrome(self):
+        line = "┃ ┃ Build · GPT-5.6 Sol OpenAI ~/src:main ╹▀▀ ⬝⬝ esc interrupt"
+
+        self.assertIsNone(herdr_relay.CHROME_RE.search(line))
+
+
 class StructuredOutputTests(unittest.TestCase):
     def test_claude_project_dir(self):
         self.assertEqual(

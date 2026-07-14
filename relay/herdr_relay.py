@@ -38,7 +38,8 @@ BULLET_OPT_RE = re.compile(
     r"(?:^|\n)[ \t]*(?:[❯>•*-]|\[\s?\])[ \t]+([A-Za-z][^\n]{0,80})"
 )
 CHROME_RE = re.compile(
-    r"^[\s─━═_—│|◔◑◕●\s]+$"
+    r"^[\s\u2500-\u259f⬝_—|◔◑◕●]+$"
+    r"|^[\s\u2500-\u259f⬝]*(?i:esc\s+interrupt)\s*$"
     r"|Kiro\s[·•]"
     r"|esc to cancel"
     r"|type to queue"
