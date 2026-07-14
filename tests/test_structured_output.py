@@ -121,6 +121,62 @@ class HostStatusTests(unittest.TestCase):
         self.assertIn("workstation", print_message.call_args.args[0])
 
 
+class HostPowerTests(unittest.TestCase):
+    @patch.object(herdr_relay, "POWER_HOST_ID", "mz")
+    @patch.object(herdr_relay, "POWER_HOST_MAC", "34:5a:60:ba:8e:20")
+    @patch.object(herdr_relay.subprocess, "run")
+    def test_wake_is_a_fixed_magic_packet_command(self, run):
+        run.return_value.returncode = 0
+
+        response = herdr_relay.wake_host({"request_id": "request-1", "host_id": "mz"})
+
+        self.assertEqual(response["type"], "command_ack")
+        run.assert_called_once_with(
+            [herdr_relay.WAKE_BIN, "34:5a:60:ba:8e:20"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+    @patch.object(herdr_relay, "POWER_HOST_ID", "mz")
+    @patch.object(herdr_relay, "HOST_TARGETS", {"mz": "mz"})
+    @patch.object(herdr_relay.subprocess, "run")
+    def test_shutdown_is_a_fixed_non_interactive_ssh_command(self, run):
+        run.return_value.returncode = 0
+
+        response = herdr_relay.shutdown_host({
+            "request_id": "request-2",
+            "host_id": "mz",
+            "confirmation_nonce": "nonce-1",
+        })
+
+        self.assertEqual(response["type"], "command_ack")
+        run.assert_called_once_with(
+            [
+                "ssh",
+                "-o", "ConnectTimeout=5",
+                "-o", "ServerAliveInterval=3",
+                "-o", "ServerAliveCountMax=2",
+                "-o", "BatchMode=yes",
+                "mz",
+                "sudo", "-n", "systemctl", "poweroff",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+    @patch.object(herdr_relay, "POWER_HOST_ID", "mz")
+    @patch.object(herdr_relay.subprocess, "run")
+    def test_power_commands_reject_other_hosts_and_missing_confirmation(self, run):
+        wake = herdr_relay.wake_host({"request_id": "request-1", "host_id": "other"})
+        shutdown = herdr_relay.shutdown_host({"request_id": "request-2", "host_id": "mz"})
+
+        self.assertEqual(wake["code"], "HOST_NOT_ALLOWED")
+        self.assertEqual(shutdown["code"], "CONFIRMATION_REQUIRED")
+        run.assert_not_called()
+
+
 class PaneChromeTests(unittest.TestCase):
     @patch.object(herdr_relay, "run_herdr")
     def test_read_pane_filters_heavy_opencode_chrome(self, run_herdr):

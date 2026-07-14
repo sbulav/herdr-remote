@@ -16,6 +16,9 @@ WS_PORT = int(os.environ.get("HERDR_RELAY_PORT", "8375"))
 POLL_INTERVAL = 2
 AUTH_TOKEN = os.environ.get("HERDR_RELAY_TOKEN", "")  # Optional: shared secret for relay auth
 PRESETS_FILE = os.environ.get("HERDR_PRESETS_FILE", "")
+POWER_HOST_ID = os.environ.get("HERDR_POWER_HOST_ID", "")
+POWER_HOST_MAC = os.environ.get("HERDR_POWER_HOST_MAC", "")
+WAKE_BIN = os.environ.get("HERDR_WAKE_BIN", "wakeonlan")
 # Native structured stores used by supported coding agents.
 CLAUDE_PROJECTS = os.environ.get("HERDR_CLAUDE_PROJECTS", "~/.claude/projects")
 OPENCODE_DB = os.environ.get("HERDR_OPENCODE_DB", "~/.local/share/opencode/opencode-stable.db")
@@ -788,6 +791,20 @@ async def handle_client(ws):
                     if len(request_results) > 512:
                         request_results.pop(next(iter(request_results)))
                 await ws.send(json.dumps(response))
+            elif msg_type == "wake_host":
+                response = wake_host(msg)
+                if request_id:
+                    request_results[request_id] = response
+                    if len(request_results) > 512:
+                        request_results.pop(next(iter(request_results)))
+                await ws.send(json.dumps(response))
+            elif msg_type == "shutdown_host":
+                response = shutdown_host(msg)
+                if request_id:
+                    request_results[request_id] = response
+                    if len(request_results) > 512:
+                        request_results.pop(next(iter(request_results)))
+                await ws.send(json.dumps(response))
             elif msg_type == "respond":
                 pane_id = msg["pane_id"]
                 remote = pane_remote_map.get(pane_id)
@@ -900,6 +917,61 @@ def terminate_session(msg):
         return command_error(request_id, "TERMINATE_FAILED", "Herdr did not terminate the client")
     session_target_map.pop(msg["session_id"], None)
     return {"type": "command_ack", "request_id": request_id, "result": {"output": output}}
+
+
+def wake_host(msg):
+    request_id = msg.get("request_id")
+    if not isinstance(request_id, str) or not request_id:
+        return command_error(None, "INVALID_REQUEST", "request_id is required")
+    host_id = msg.get("host_id")
+    if host_id != POWER_HOST_ID or not POWER_HOST_MAC:
+        return command_error(request_id, "HOST_NOT_ALLOWED", "Power control is not allowed for this host")
+    try:
+        result = subprocess.run(
+            [WAKE_BIN, POWER_HOST_MAC],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return command_error(request_id, "WAKE_FAILED", "Wake-on-LAN command failed")
+    if result.returncode != 0:
+        return command_error(request_id, "WAKE_FAILED", "Wake-on-LAN command failed")
+    return {"type": "command_ack", "request_id": request_id, "result": {"host_id": host_id}}
+
+
+def shutdown_host(msg):
+    request_id = msg.get("request_id")
+    if not isinstance(request_id, str) or not request_id:
+        return command_error(None, "INVALID_REQUEST", "request_id is required")
+    if not isinstance(msg.get("confirmation_nonce"), str) or not msg["confirmation_nonce"]:
+        return command_error(request_id, "CONFIRMATION_REQUIRED", "confirmation_nonce is required")
+    host_id = msg.get("host_id")
+    if host_id != POWER_HOST_ID:
+        return command_error(request_id, "HOST_NOT_ALLOWED", "Power control is not allowed for this host")
+    target = HOST_TARGETS.get(host_id)
+    if not target:
+        return command_error(request_id, "UNKNOWN_HOST", "Power host has no SSH target")
+    try:
+        result = subprocess.run(
+            [
+                "ssh",
+                "-o", "ConnectTimeout=5",
+                "-o", "ServerAliveInterval=3",
+                "-o", "ServerAliveCountMax=2",
+                "-o", "BatchMode=yes",
+                target,
+                "sudo", "-n", "systemctl", "poweroff",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception:
+        return command_error(request_id, "SHUTDOWN_FAILED", "Host shutdown command failed")
+    if result.returncode != 0:
+        return command_error(request_id, "SHUTDOWN_FAILED", "Host shutdown command failed")
+    return {"type": "command_ack", "request_id": request_id, "result": {"host_id": host_id}}
 
 
 class UDPPlugin(asyncio.DatagramProtocol):

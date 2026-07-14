@@ -123,6 +123,10 @@ export HERDR_RELAY_TOKEN="$(openssl rand -hex 16)"
 uv run relay/herdr_relay.py
 ```
 
+## Native host power controls
+
+The native relay accepts typed `wake_host` and `shutdown_host` operations when `HERDR_POWER_HOST_ID` and `HERDR_POWER_HOST_MAC` are configured. Wake runs `wakeonlan` locally; shutdown uses the configured preset SSH target and the fixed command `sudo -n systemctl poweroff`. The relay never accepts shell text from a client.
+
 ## Requirements
 
 - macOS 14+ (menu bar app)
