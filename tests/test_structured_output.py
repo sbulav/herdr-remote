@@ -268,6 +268,25 @@ class StructuredOutputTests(unittest.TestCase):
         self.assertEqual(blocks[2]["markdown"], "I'll inspect it.")
         self.assertEqual(blocks[3]["text"], "auth.py")
 
+    def test_opencode_mapping_preserves_multiline_markdown(self):
+        markdown = (
+            "# Todos\n"
+            "[•] Identify degraded state\n"
+            "[ ] Correlate agent logs\n\n"
+            "$ kubectl get nodes\n"
+            "NODE STATE\n"
+            "km1 Degraded"
+        )
+        document = {
+            "rows": [
+                ["assistant", json.dumps({"type": "text", "text": markdown})],
+            ],
+        }
+
+        blocks = herdr_relay.opencode_to_blocks(document)
+
+        self.assertEqual(blocks[0]["markdown"], markdown)
+
 
 class DetectOptionsTests(unittest.TestCase):
     def test_legacy_tool_permission(self):
