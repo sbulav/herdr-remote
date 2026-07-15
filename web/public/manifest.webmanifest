@@ -1,0 +1,25 @@
+{
+  "id": "/agents",
+  "name": "Herdr Remote",
+  "short_name": "Herdr",
+  "description": "Monitor and safely control authorized Herdr agents.",
+  "start_url": "/agents",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#171b20",
+  "theme_color": "#171b20",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

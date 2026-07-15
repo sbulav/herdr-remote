@@ -7,3 +7,7 @@ __pycache__/
 .swiftpm/
 .venv/
 .wrangler/
+node_modules/
+test-results/
+playwright-report/
+*.tsbuildinfo
