@@ -43,8 +43,8 @@ class ConnectorProtocolFixtureTests(unittest.TestCase):
 
     def test_handshake_precedes_state(self):
         self.assertEqual(
-            [message["type"] for message in self.messages[:3]],
-            ["connector.hello", "server.welcome", "state.snapshot"],
+            [message["type"] for message in self.messages[:4]],
+            ["connector.hello", "server.welcome", "state.inventory", "state.snapshot"],
         )
         hello = self.messages[0]["body"]
         welcome = self.messages[1]["body"]
@@ -56,6 +56,25 @@ class ConnectorProtocolFixtureTests(unittest.TestCase):
         self.assertTrue(
             set(welcome["accepted_capabilities"]).issubset(hello["capabilities"])
         )
+        self.assertNotIn("instance_ids", hello)
+        self.assertIn("state.inventory.v1", welcome["accepted_capabilities"])
+        inventory = self.messages[2]["body"]["instance_ids"]
+        self.assertEqual(len(inventory), len(set(inventory)))
+        snapshot_instances = {
+            message["body"]["instance_id"]
+            for message in self.messages
+            if message["type"] == "state.snapshot"
+        }
+        self.assertTrue(snapshot_instances.issubset(set(inventory)))
+
+    def test_inventory_is_additive_and_negotiated(self):
+        offered = self.messages[0]["body"]["capabilities"]
+        self.assertIn("state.inventory.v1", offered)
+        self.assertIn(
+            "state.inventory.v1",
+            self.messages[1]["body"]["accepted_capabilities"],
+        )
+        self.assertEqual(self.messages[2]["type"], "state.inventory")
 
     def test_state_delta_continues_snapshot_epoch(self):
         snapshot = next(message["body"] for message in self.messages if message["type"] == "state.snapshot")
