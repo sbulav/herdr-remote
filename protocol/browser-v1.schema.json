@@ -1,0 +1,1175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://herdr.example/schemas/browser-v1.schema.json",
+  "title": "Herdr browser protocol v1 messages",
+  "description": "Same-origin control-plane and PWA WebSocket messages. Prompt and terminal content are transient and MUST NOT be logged or persisted.",
+  "$defs": {
+    "uuid_v7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "connector_epoch": {
+      "description": "Connector-scoped instance epoch. Generations are comparable only for one host, instance, connector epoch, and terminal.",
+      "$ref": "#/$defs/uuid_v7"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "instance_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "terminal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+    },
+    "optional_label": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/label"}
+      ]
+    },
+    "project_label": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+$"
+        }
+      ]
+    },
+    "agent_status": {
+      "enum": ["idle", "working", "blocked", "done", "unknown"]
+    },
+    "instance_status": {
+      "enum": ["online", "degraded", "incompatible", "offline"]
+    },
+    "host_status": {
+      "enum": ["connected", "disconnected"]
+    },
+    "capability": {
+      "enum": [
+        "read.v1",
+        "output.subscribe.v1",
+        "prompt.snapshot.v1",
+        "checked_input.v1",
+        "prompt.respond.v1"
+      ]
+    },
+    "capabilities": {
+      "description": "Server projection. prompt.respond.v1 requires checked_input.v1. The server also validates capability compatibility with the reported Herdr version.",
+      "type": "array",
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/capability"},
+      "allOf": [
+        {
+          "if": {"contains": {"const": "prompt.respond.v1"}},
+          "then": {"contains": {"const": "checked_input.v1"}}
+        }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host_id": {"$ref": "#/$defs/uuid_v7"},
+        "instance_id": {"$ref": "#/$defs/instance_id"},
+        "terminal_id": {"$ref": "#/$defs/terminal_id"}
+      },
+      "required": ["host_id", "instance_id", "terminal_id"]
+    },
+    "agent_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "terminal_id": {"$ref": "#/$defs/terminal_id"},
+        "agent": {"$ref": "#/$defs/label"},
+        "display_name": {"$ref": "#/$defs/optional_label"},
+        "status": {"$ref": "#/$defs/agent_status"},
+        "project": {"$ref": "#/$defs/project_label"},
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "agent_generation": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Connector generation scoped by target and connector_epoch; it MUST NOT regress within that scope."
+        },
+        "herdr_input_revision": {"type": "integer", "minimum": 0}
+      },
+      "required": [
+        "terminal_id",
+        "agent",
+        "display_name",
+        "status",
+        "project",
+        "connector_epoch",
+        "agent_generation",
+        "herdr_input_revision"
+      ]
+    },
+    "agent_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent": {"$ref": "#/$defs/label"},
+        "display_name": {"$ref": "#/$defs/optional_label"},
+        "status": {"$ref": "#/$defs/agent_status"},
+        "project": {"$ref": "#/$defs/project_label"},
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "agent_generation": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Connector generation scoped by target and connector_epoch; it MUST NOT regress within that scope."
+        },
+        "herdr_input_revision": {"type": "integer", "minimum": 0}
+      },
+      "required": [
+        "agent",
+        "display_name",
+        "status",
+        "project",
+        "connector_epoch",
+        "agent_generation",
+        "herdr_input_revision"
+      ]
+    },
+    "instance_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": {"$ref": "#/$defs/instance_id"},
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "herdr_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9.+_-]+$"
+        },
+        "herdr_protocol": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "status": {"$ref": "#/$defs/instance_status"},
+        "capabilities": {"$ref": "#/$defs/capabilities"},
+        "agents": {
+          "description": "terminal_id values MUST be unique within the instance.",
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/agent_record"}
+        }
+      },
+      "required": [
+        "instance_id",
+        "connector_epoch",
+        "herdr_version",
+        "herdr_protocol",
+        "status",
+        "capabilities",
+        "agents"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"herdr_version": {"const": "0.7.3"}},
+            "required": ["herdr_version"]
+          },
+          "then": {
+            "properties": {
+              "capabilities": {"not": {"contains": {"const": "checked_input.v1"}}},
+              "agents": {
+                "items": {
+                  "properties": {"herdr_input_revision": {"const": 0}}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "instance_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "herdr_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9.+_-]+$"
+        },
+        "herdr_protocol": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "status": {"$ref": "#/$defs/instance_status"},
+        "capabilities": {"$ref": "#/$defs/capabilities"}
+      },
+      "required": ["connector_epoch", "herdr_version", "herdr_protocol", "status", "capabilities"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"herdr_version": {"const": "0.7.3"}},
+            "required": ["herdr_version"]
+          },
+          "then": {
+            "properties": {
+              "capabilities": {"not": {"contains": {"const": "checked_input.v1"}}}
+            }
+          }
+        }
+      ]
+    },
+    "host_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host_id": {"$ref": "#/$defs/uuid_v7"},
+        "display_name": {"$ref": "#/$defs/label"},
+        "status": {"$ref": "#/$defs/host_status"},
+        "instances": {
+          "description": "instance_id values MUST be unique within the host.",
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/instance_record"}
+        }
+      },
+      "required": ["host_id", "display_name", "status", "instances"]
+    },
+    "host_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {"$ref": "#/$defs/label"},
+        "status": {"$ref": "#/$defs/host_status"}
+      },
+      "required": ["display_name", "status"]
+    },
+    "session_snapshot_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "state_epoch": {"$ref": "#/$defs/uuid_v7"},
+        "sequence": {"const": 0},
+        "server_time": {"$ref": "#/$defs/timestamp"},
+        "hosts": {
+          "description": "host_id values MUST be unique in the snapshot.",
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/host_record"}
+        }
+      },
+      "required": ["session_id", "state_epoch", "sequence", "server_time", "hosts"]
+    },
+    "state_change": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {"const": "host.upsert"},
+            "host_id": {"$ref": "#/$defs/uuid_v7"},
+            "host": {"$ref": "#/$defs/host_state"}
+          },
+          "required": ["operation", "host_id", "host"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {"const": "host.remove"},
+            "host_id": {"$ref": "#/$defs/uuid_v7"},
+            "reason": {"enum": ["unenrolled", "authorization_changed"]}
+          },
+          "required": ["operation", "host_id", "reason"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {"const": "instance.upsert"},
+            "host_id": {"$ref": "#/$defs/uuid_v7"},
+            "instance_id": {"$ref": "#/$defs/instance_id"},
+            "instance": {"$ref": "#/$defs/instance_state"}
+          },
+          "required": ["operation", "host_id", "instance_id", "instance"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {"const": "instance.remove"},
+            "host_id": {"$ref": "#/$defs/uuid_v7"},
+            "instance_id": {"$ref": "#/$defs/instance_id"},
+            "reason": {"enum": ["unconfigured", "host_unenrolled"]}
+          },
+          "required": ["operation", "host_id", "instance_id", "reason"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {"const": "instance.epoch_changed"},
+            "host_id": {"$ref": "#/$defs/uuid_v7"},
+            "instance_id": {"$ref": "#/$defs/instance_id"},
+            "previous_connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+            "connector_epoch": {"$ref": "#/$defs/connector_epoch"}
+          },
+          "required": [
+            "operation",
+            "host_id",
+            "instance_id",
+            "previous_connector_epoch",
+            "connector_epoch"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {"const": "agent.upsert"},
+            "target": {"$ref": "#/$defs/target"},
+            "agent": {"$ref": "#/$defs/agent_state"}
+          },
+          "required": ["operation", "target", "agent"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {"const": "agent.remove"},
+            "target": {"$ref": "#/$defs/target"},
+            "reason": {"enum": ["pane_closed", "agent_exited", "reconciled"]}
+          },
+          "required": ["operation", "target", "reason"]
+        }
+      ]
+    },
+    "state_delta_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "state_epoch": {"$ref": "#/$defs/uuid_v7"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "changes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": {"$ref": "#/$defs/state_change"}
+        }
+      },
+      "required": ["session_id", "state_epoch", "sequence", "changes"]
+    },
+    "state_resync_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "expected_epoch": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/uuid_v7"}
+          ]
+        },
+        "expected_sequence": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "integer", "minimum": 0}
+          ]
+        },
+        "reason": {
+          "enum": [
+            "gap",
+            "epoch_mismatch",
+            "unknown_remove",
+            "connector_epoch_changed",
+            "operator_refresh"
+          ]
+        }
+      },
+      "required": ["session_id", "expected_epoch", "expected_sequence", "reason"]
+    },
+    "prompt_option": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "label": {"$ref": "#/$defs/label"}
+      },
+      "required": ["id", "label"]
+    },
+    "prompt_snapshot_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "target": {"$ref": "#/$defs/target"},
+        "state_epoch": {"$ref": "#/$defs/uuid_v7"},
+        "state_sequence": {"type": "integer", "minimum": 0},
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "agent_generation": {"type": "integer", "minimum": 1},
+        "herdr_input_revision": {"type": "integer", "minimum": 0},
+        "herdr_content_hash": {"$ref": "#/$defs/hash"},
+        "fingerprint": {"$ref": "#/$defs/hash"},
+        "excerpt": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "excerpt_truncated": {"type": "boolean"},
+        "adapter_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9.+_-]+$"
+        },
+        "options": {
+          "description": "Option id values MUST be unique within the prompt snapshot.",
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/prompt_option"}
+        }
+      },
+      "required": [
+        "session_id",
+        "target",
+        "state_epoch",
+        "state_sequence",
+        "connector_epoch",
+        "agent_generation",
+        "herdr_input_revision",
+        "herdr_content_hash",
+        "fingerprint",
+        "excerpt",
+        "excerpt_truncated",
+        "adapter_version",
+        "options"
+      ]
+    },
+    "output_subscribe_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "subscription_id": {"$ref": "#/$defs/uuid_v7"},
+        "target": {"$ref": "#/$defs/target"},
+        "source": {"enum": ["visible", "recent", "recent_unwrapped", "detection"]},
+        "lines": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "poll_interval_ms": {"type": "integer", "minimum": 500, "maximum": 5000}
+      },
+      "required": [
+        "session_id",
+        "subscription_id",
+        "target",
+        "source",
+        "lines",
+        "poll_interval_ms"
+      ]
+    },
+    "output_unsubscribe_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "subscription_id": {"$ref": "#/$defs/uuid_v7"}
+      },
+      "required": ["session_id", "subscription_id"]
+    },
+    "output_snapshot_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "subscription_id": {"$ref": "#/$defs/uuid_v7"},
+        "target": {"$ref": "#/$defs/target"},
+        "state_epoch": {"$ref": "#/$defs/uuid_v7"},
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "agent_generation": {"type": "integer", "minimum": 1},
+        "herdr_input_revision": {"type": "integer", "minimum": 0},
+        "content_revision": {"$ref": "#/$defs/hash"},
+        "text": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "truncated": {"type": "boolean"}
+      },
+      "required": [
+        "session_id",
+        "subscription_id",
+        "target",
+        "state_epoch",
+        "connector_epoch",
+        "agent_generation",
+        "herdr_input_revision",
+        "content_revision",
+        "text",
+        "truncated"
+      ]
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state_epoch": {"$ref": "#/$defs/uuid_v7"},
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "agent_generation": {"type": "integer", "minimum": 1},
+        "herdr_input_revision": {"type": "integer", "minimum": 0},
+        "agent": {"$ref": "#/$defs/label"},
+        "statuses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/agent_status"}
+        },
+        "prompt_fingerprint": {"$ref": "#/$defs/hash"},
+        "herdr_content_hash": {"$ref": "#/$defs/hash"}
+      },
+      "required": [
+        "state_epoch",
+        "connector_epoch",
+        "agent_generation",
+        "herdr_input_revision",
+        "agent",
+        "statuses"
+      ]
+    },
+    "key": {
+      "enum": [
+        "enter",
+        "esc",
+        "tab",
+        "shift+tab",
+        "up",
+        "down",
+        "left",
+        "right",
+        "pageup",
+        "pagedown",
+        "home",
+        "end",
+        "backspace",
+        "delete",
+        "ctrl+c"
+      ]
+    },
+    "input_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "not": {"pattern": "[\\u0000-\\u001f\\u007f-\\u009f]"}
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {"$ref": "#/$defs/key"}
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.read"},
+            "source": {"enum": ["visible", "recent", "recent_unwrapped", "detection"]},
+            "lines": {"type": "integer", "minimum": 1, "maximum": 1000}
+          },
+          "required": ["type", "source", "lines"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.send_text"},
+            "text": {"$ref": "#/$defs/input_text"}
+          },
+          "required": ["type", "text"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.send_keys"},
+            "keys": {"$ref": "#/$defs/keys"}
+          },
+          "required": ["type", "keys"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.send_input"},
+            "text": {"$ref": "#/$defs/input_text"},
+            "keys": {"$ref": "#/$defs/keys"}
+          },
+          "required": ["type"],
+          "anyOf": [
+            {"required": ["text"]},
+            {"required": ["keys"]}
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"type": {"const": "agent.interrupt"}},
+          "required": ["type"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "prompt.respond"},
+            "option_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "pattern": "^[A-Za-z0-9._-]+$"
+            }
+          },
+          "required": ["type", "option_id"]
+        }
+      ]
+    },
+    "action_request_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "action_id": {
+          "description": "Durably unique audit identity. Reuse is rejected before dispatch across all browser and connector sessions.",
+          "$ref": "#/$defs/uuid_v7"
+        },
+        "target": {"$ref": "#/$defs/target"},
+        "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 5000},
+        "expected": {"$ref": "#/$defs/expected"},
+        "operation": {"$ref": "#/$defs/operation"}
+      },
+      "required": ["session_id", "action_id", "target", "timeout_ms", "expected", "operation"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "properties": {"type": {"const": "agent.read"}},
+                "required": ["type"]
+              }
+            },
+            "required": ["operation"]
+          },
+          "else": {"properties": {"timeout_ms": {"maximum": 3000}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "properties": {"type": {"const": "prompt.respond"}},
+                "required": ["type"]
+              }
+            },
+            "required": ["operation"]
+          },
+          "then": {
+            "properties": {
+              "expected": {"required": ["prompt_fingerprint", "herdr_content_hash"]}
+            }
+          },
+          "else": {
+            "properties": {
+              "expected": {
+                "not": {
+                  "anyOf": [
+                    {"required": ["prompt_fingerprint"]},
+                    {"required": ["herdr_content_hash"]}
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "action_received_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "action_id": {"$ref": "#/$defs/uuid_v7"}
+      },
+      "required": ["session_id", "action_id"]
+    },
+    "read_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state_epoch": {"$ref": "#/$defs/uuid_v7"},
+        "connector_epoch": {"$ref": "#/$defs/connector_epoch"},
+        "agent_generation": {"type": "integer", "minimum": 1},
+        "herdr_input_revision": {"type": "integer", "minimum": 0},
+        "text": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "truncated": {"type": "boolean"},
+        "content_revision": {"$ref": "#/$defs/hash"}
+      },
+      "required": [
+        "state_epoch",
+        "connector_epoch",
+        "agent_generation",
+        "herdr_input_revision",
+        "text",
+        "truncated",
+        "content_revision"
+      ]
+    },
+    "write_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"herdr_acknowledged": {"const": true}},
+      "required": ["herdr_acknowledged"]
+    },
+    "prompt_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "herdr_acknowledged": {"const": true},
+        "option_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        }
+      },
+      "required": ["herdr_acknowledged", "option_id"]
+    },
+    "result_code": {
+      "enum": [
+        "INVALID_MESSAGE",
+        "UNSUPPORTED_OPERATION",
+        "UNAUTHORIZED",
+        "DUPLICATE_ACTION",
+        "TARGET_NOT_FOUND",
+        "STALE_TARGET",
+        "STALE_STATE",
+        "NOT_AN_AGENT",
+        "PROMPT_CHANGED",
+        "INVALID_TEXT",
+        "INVALID_KEYS",
+        "DEADLINE_EXCEEDED",
+        "CONNECTION_LOST",
+        "HERDR_UNAVAILABLE",
+        "HERDR_INCOMPATIBLE",
+        "HERDR_REJECTED",
+        "OUTCOME_UNKNOWN",
+        "AUDIT_UNAVAILABLE",
+        "BUSY",
+        "RATE_LIMITED",
+        "INTERNAL"
+      ]
+    },
+    "rejected_code": {
+      "enum": [
+        "INVALID_MESSAGE",
+        "UNSUPPORTED_OPERATION",
+        "UNAUTHORIZED",
+        "DUPLICATE_ACTION",
+        "TARGET_NOT_FOUND",
+        "STALE_TARGET",
+        "STALE_STATE",
+        "NOT_AN_AGENT",
+        "PROMPT_CHANGED",
+        "INVALID_TEXT",
+        "INVALID_KEYS",
+        "DEADLINE_EXCEEDED",
+        "HERDR_UNAVAILABLE",
+        "HERDR_INCOMPATIBLE",
+        "AUDIT_UNAVAILABLE",
+        "BUSY",
+        "RATE_LIMITED"
+      ]
+    },
+    "write_rejected_code": {
+      "oneOf": [
+        {"$ref": "#/$defs/rejected_code"},
+        {"const": "INTERNAL"}
+      ]
+    },
+    "read_failure_code": {
+      "enum": [
+        "CONNECTION_LOST",
+        "DEADLINE_EXCEEDED",
+        "HERDR_UNAVAILABLE",
+        "HERDR_REJECTED",
+        "INTERNAL"
+      ]
+    },
+    "write_failure_code": {
+      "const": "HERDR_REJECTED"
+    },
+    "action_result_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "action_id": {"$ref": "#/$defs/uuid_v7"},
+        "operation_type": {
+          "enum": [
+            "agent.read",
+            "agent.send_text",
+            "agent.send_keys",
+            "agent.send_input",
+            "agent.interrupt",
+            "prompt.respond"
+          ]
+        },
+        "status": {"enum": ["succeeded", "rejected", "failed", "unknown"]},
+        "code": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/result_code"}
+          ]
+        },
+        "result": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/read_result"},
+            {"$ref": "#/$defs/write_result"},
+            {"$ref": "#/$defs/prompt_result"}
+          ]
+        }
+      },
+      "required": ["session_id", "action_id", "operation_type", "status", "code", "result"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"const": "succeeded"}},
+            "required": ["status"]
+          },
+          "then": {"properties": {"code": {"type": "null"}}},
+          "else": {
+            "properties": {
+              "code": {"$ref": "#/$defs/result_code"},
+              "result": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "succeeded"}, "operation_type": {"const": "agent.read"}},
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"result": {"$ref": "#/$defs/read_result"}}}
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "succeeded"}, "operation_type": {"const": "prompt.respond"}},
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"result": {"$ref": "#/$defs/prompt_result"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "succeeded"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt"]
+              }
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"result": {"$ref": "#/$defs/write_result"}}}
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "unknown"}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "code": {"const": "OUTCOME_UNKNOWN"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt", "prompt.respond"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "rejected"},
+              "operation_type": {"const": "agent.read"}
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/rejected_code"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "rejected"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt", "prompt.respond"]
+              }
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/write_rejected_code"}}}
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "failed"}, "operation_type": {"const": "agent.read"}},
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/read_failure_code"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "failed"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt", "prompt.respond"]
+              }
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/write_failure_code"}}}
+        }
+      ]
+    },
+    "action_status_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Metadata-only response from GET /api/v1/actions/{action_id}.",
+      "properties": {
+        "action_id": {"$ref": "#/$defs/uuid_v7"},
+        "operation_type": {
+          "enum": [
+            "agent.read",
+            "agent.send_text",
+            "agent.send_keys",
+            "agent.send_input",
+            "agent.interrupt",
+            "prompt.respond"
+          ]
+        },
+        "status": {"enum": ["succeeded", "rejected", "failed", "unknown"]},
+        "code": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/result_code"}
+          ]
+        },
+        "requested_at": {"$ref": "#/$defs/timestamp"},
+        "completed_at": {"$ref": "#/$defs/timestamp"}
+      },
+      "required": ["action_id", "operation_type", "status", "code", "requested_at", "completed_at"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"const": "succeeded"}},
+            "required": ["status"]
+          },
+          "then": {"properties": {"code": {"type": "null"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "rejected"},
+              "operation_type": {"const": "agent.read"}
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/rejected_code"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "rejected"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt", "prompt.respond"]
+              }
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/write_rejected_code"}}}
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "unknown"}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "code": {"const": "OUTCOME_UNKNOWN"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt", "prompt.respond"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "failed"}, "operation_type": {"const": "agent.read"}},
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/read_failure_code"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "failed"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt", "prompt.respond"]
+              }
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"code": {"$ref": "#/$defs/write_failure_code"}}}
+        }
+      ]
+    },
+    "protocol_error_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Codes are rendered with PWA-owned text. No peer-provided text or terminal content is present.",
+      "properties": {
+        "session_id": {"$ref": "#/$defs/uuid_v7"},
+        "in_reply_to": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/uuid_v7"}
+          ]
+        },
+        "code": {
+          "enum": [
+            "INVALID_MESSAGE",
+            "UNSUPPORTED_PROTOCOL",
+            "UNSUPPORTED_MESSAGE",
+            "UNAUTHORIZED",
+            "RATE_LIMITED",
+            "INTERNAL"
+          ]
+        },
+        "fatal": {"type": "boolean"}
+      },
+      "required": ["session_id", "in_reply_to", "code", "fatal"]
+    },
+    "message_type": {
+      "enum": [
+        "session.snapshot",
+        "state.delta",
+        "state.resync",
+        "prompt.snapshot",
+        "output.subscribe",
+        "output.unsubscribe",
+        "output.snapshot",
+        "action.request",
+        "action.received",
+        "action.result",
+        "protocol.error"
+      ]
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {"const": 1},
+        "message_id": {"$ref": "#/$defs/uuid_v7"},
+        "type": {"$ref": "#/$defs/message_type"},
+        "sent_at": {"$ref": "#/$defs/timestamp"},
+        "body": {"type": "object"}
+      },
+      "required": ["protocol", "message_id", "type", "sent_at", "body"]
+    }
+  },
+  "oneOf": [
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "session.snapshot"}, "body": {"$ref": "#/$defs/session_snapshot_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "state.delta"}, "body": {"$ref": "#/$defs/state_delta_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "state.resync"}, "body": {"$ref": "#/$defs/state_resync_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "prompt.snapshot"}, "body": {"$ref": "#/$defs/prompt_snapshot_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "output.subscribe"}, "body": {"$ref": "#/$defs/output_subscribe_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "output.unsubscribe"}, "body": {"$ref": "#/$defs/output_unsubscribe_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "output.snapshot"}, "body": {"$ref": "#/$defs/output_snapshot_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "action.request"}, "body": {"$ref": "#/$defs/action_request_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "action.received"}, "body": {"$ref": "#/$defs/action_received_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "action.result"}, "body": {"$ref": "#/$defs/action_result_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "protocol.error"}, "body": {"$ref": "#/$defs/protocol_error_body"}}}
+      ]
+    }
+  ]
+}

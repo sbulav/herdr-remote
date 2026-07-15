@@ -11,6 +11,10 @@
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     },
+    "state_epoch": {
+      "description": "Connector instance epoch. It is copied unchanged to browser connector_epoch.",
+      "$ref": "#/$defs/uuid_v7"
+    },
     "hash": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
@@ -34,7 +38,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "state_epoch": {"$ref": "#/$defs/uuid"},
+        "state_epoch": {"$ref": "#/$defs/state_epoch"},
         "agent_generation": {"type": "integer", "minimum": 1},
         "herdr_input_revision": {"type": "integer", "minimum": 0},
         "agent": {"type": "string", "minLength": 1, "maxLength": 80},
@@ -214,7 +218,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "state_epoch": {"$ref": "#/$defs/uuid"},
+        "state_epoch": {"$ref": "#/$defs/state_epoch"},
         "agent_generation": {"type": "integer", "minimum": 1},
         "herdr_input_revision": {"type": "integer", "minimum": 0},
         "text": {"type": "string", "maxLength": 32768},

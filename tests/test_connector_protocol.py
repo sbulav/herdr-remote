@@ -60,6 +60,9 @@ class ConnectorProtocolFixtureTests(unittest.TestCase):
     def test_state_delta_continues_snapshot_epoch(self):
         snapshot = next(message["body"] for message in self.messages if message["type"] == "state.snapshot")
         delta = next(message["body"] for message in self.messages if message["type"] == "state.delta")
+        snapshot_epoch = uuid.UUID(snapshot["epoch"])
+        self.assertEqual(snapshot_epoch.version, 7)
+        self.assertEqual(snapshot_epoch.variant, uuid.RFC_4122)
         self.assertEqual(snapshot["sequence"], 0)
         self.assertEqual(delta["epoch"], snapshot["epoch"])
         self.assertEqual(delta["sequence"], snapshot["sequence"] + 1)
@@ -200,6 +203,35 @@ class ConnectorProtocolFixtureTests(unittest.TestCase):
                 "prompt_fingerprint",
                 "herdr_content_hash",
             },
+        )
+
+        state_epoch_schema = self.action_schema["$defs"]["state_epoch"]
+        self.assertEqual(state_epoch_schema["$ref"], "#/$defs/uuid_v7")
+
+    def test_all_connector_epoch_values_are_uuidv7(self):
+        epoch_values = []
+
+        def collect(node):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    if key in {"epoch", "state_epoch", "expected_epoch"} and value is not None:
+                        epoch_values.append(value)
+                    collect(value)
+            elif isinstance(node, list):
+                for value in node:
+                    collect(value)
+
+        collect(self.messages)
+        collect(self.operations)
+        self.assertGreater(len(epoch_values), 0)
+        epoch_pattern = re.compile(self.action_schema["$defs"]["uuid_v7"]["pattern"])
+        for value in epoch_values:
+            parsed = uuid.UUID(value)
+            self.assertEqual(parsed.version, 7, value)
+            self.assertEqual(parsed.variant, uuid.RFC_4122, value)
+            self.assertIsNotNone(epoch_pattern.fullmatch(value))
+        self.assertIsNone(
+            epoch_pattern.fullmatch("123e4567-e89b-42d3-a456-426614174000")
         )
 
     def test_action_schema_rejects_controls_and_bounds_utf8(self):

@@ -22,7 +22,7 @@ The connector uses Herdr's local socket API as its only control surface. The `he
 - Session launch, termination, host power, and arbitrary shell execution are out of scope.
 - Action audit metadata is durable; prompt and terminal content is transient.
 - Interactive actions fail closed and are never replayed automatically.
-- The PWA requires reliable Web Push, but browser and push protocols are outside this connector contract.
+- The PWA requires reliable Web Push, but browser and push protocols are outside this connector contract. The same-origin PWA contract is specified in [Browser protocol v1](browser-protocol-v1.md).
 
 ## Verified Herdr integration
 
@@ -109,7 +109,7 @@ outbound connector (one OS user, one host)
 Herdr server and managed agent PTYs
 ```
 
-The browser never connects to a host connector. The control plane never opens SSH connections to a host. The connector exposes no listening network port.
+The browser never connects to a host connector. It uses the separate [Browser protocol v1](browser-protocol-v1.md) through the same-origin control plane. The control plane never opens SSH connections to a host. The connector exposes no listening network port.
 
 ## Core entities
 
@@ -236,7 +236,7 @@ After `server.welcome`, each configured Herdr instance performs reconciliation a
 | Body field | Type | Contract |
 | --- | --- | --- |
 | `instance_id` | string | `default` or configured named-session ID. |
-| `epoch` | UUID | New random value whenever connector state is rebuilt. |
+| `epoch` | UUIDv7 | New value whenever connector state is rebuilt. The browser copies it unchanged as `connector_epoch`. |
 | `sequence` | integer | Always `0` for a snapshot. |
 | `herdr_version` | string | Version returned by `ping`. |
 | `herdr_protocol` | integer | Local Herdr socket protocol. |
@@ -275,7 +275,9 @@ or:
 
 A connector-to-server sequence gap, epoch mismatch, or unknown terminal removal invalidates that instance cache. The server sends `state.resync`; the connector performs Herdr reconciliation and answers with a new snapshot and epoch. Deltas from an old epoch are discarded. This sequence does not imply that Herdr itself supplies sequenced events.
 
-`state.resync` contains `instance_id`, the server's current `expected_epoch` or null, `expected_sequence` or null, and reason `gap`, `epoch_mismatch`, `unknown_remove`, or `operator_refresh`. The connector does not attempt delta repair; it always reconciles and sends a new epoch snapshot.
+When projecting this stream to the PWA, the control plane exposes this instance `epoch` as browser `connector_epoch`, separately from the browser-global `state_epoch`. A connector epoch change forces browser delta invalidation, `state.resync`, and a full browser snapshot. Connector generations are compared only within one `(host_id, instance_id, connector_epoch, terminal_id)` scope.
+
+`state.resync` contains `instance_id`, the server's current UUIDv7 `expected_epoch` or null, `expected_sequence` or null, and reason `gap`, `epoch_mismatch`, `unknown_remove`, or `operator_refresh`. The connector does not attempt delta repair; it always reconciles and sends a new UUIDv7 epoch snapshot.
 
 ## Prompt snapshots
 
@@ -284,7 +286,7 @@ While an agent is blocked, the connector reads and re-evaluates the prompt at le
 | Body field | Type | Contract |
 | --- | --- | --- |
 | `target` | target | Exact agent key. |
-| `state_epoch` | UUID | Current state epoch. |
+| `state_epoch` | UUIDv7 | Current connector instance epoch. |
 | `state_sequence` | integer | State sequence used to resolve the target. |
 | `agent_generation` | integer | Exact generation of the blocked agent record. |
 | `herdr_content_hash` | string | SHA-256 of the normalized detection-buffer input; future checked input validates it atomically. |
@@ -302,7 +304,7 @@ Prompt extraction is deterministic:
 4. Run the versioned adapter, which returns one canonical prompt string and an ordered list of option ID/label pairs.
 5. Use the canonical prompt, not the full terminal read or display excerpt, for fingerprinting.
 
-The canonical prompt document contains `v`, `host_id`, `instance_id`, `terminal_id`, `adapter_version`, `prompt`, and the ordered `options`. Serialize it with RFC 8785 JSON Canonicalization Scheme and encode the hash as `sha256:<lowercase hex>`. The hash therefore binds the prompt, target, parser, and option mapping. `excerpt` is the first 8 KiB of the canonical prompt at a UTF-8 boundary. `prompt.respond` carries both `expected.prompt_fingerprint` for adapter binding and `expected.herdr_content_hash` for atomic local validation.
+The canonical prompt document contains `v`, `host_id`, `instance_id`, `terminal_id`, `adapter_version`, `prompt`, and the ordered `options`. Serialize it with RFC 8785 JSON Canonicalization Scheme and encode the hash as `sha256:<lowercase hex>`. The hash therefore binds the prompt, target, parser, and option mapping. `excerpt` is the first 8 KiB of the canonical prompt at a UTF-8 boundary. The browser projection may further truncate this display excerpt to 2,048 Unicode scalar values, but it copies both hashes unchanged and combines the connector and browser truncation flags. `prompt.respond` carries both `expected.prompt_fingerprint` for adapter binding and `expected.herdr_content_hash` for atomic local validation.
 
 If no known adapter matches, `options` is empty and semantic approve/reject is unavailable. Generic write interaction is also unavailable unless the Herdr instance advertises `checked_input.v1`.
 
@@ -322,7 +324,7 @@ Server to connector fields:
 | `lines` | integer | 1 to 1,000. |
 | `poll_interval_ms` | integer | 500 to 5,000; server default is 1,000. |
 
-The connector responds with `output.snapshot` containing `subscription_id`, `target`, `state_epoch`, `agent_generation`, `herdr_input_revision`, `content_revision`, complete replacement `text`, and boolean `truncated`. For a write-capable instance, Herdr must sample text and `herdr_input_revision` atomically. The connector publishes that pair only when its serialized state actor maps the same input revision to the reported agent generation; a mismatch is reconciled and read again. Revision `0` identifies an unguarded 0.7.3 read and can never authorize a write. `content_revision` is lowercase SHA-256 of the exact UTF-8 text. Text is capped at 32,768 Unicode scalar values, which is at most 128 KiB UTF-8. Unchanged text is not resent. `output.unsubscribe` contains only `subscription_id`; an unknown ID is an idempotent no-op.
+The connector responds with `output.snapshot` containing `subscription_id`, `target`, UUIDv7 `state_epoch`, `agent_generation`, `herdr_input_revision`, `content_revision`, complete replacement `text`, and boolean `truncated`. For a write-capable instance, Herdr must sample text and `herdr_input_revision` atomically. The connector publishes that pair only when its serialized state actor maps the same input revision to the reported agent generation; a mismatch is reconciled and read again. Revision `0` identifies an unguarded 0.7.3 read and can never authorize a write. `content_revision` is lowercase SHA-256 of the exact UTF-8 text. Text is capped at 32,768 Unicode scalar values, which is at most 128 KiB UTF-8. Unchanged text is not resent. `output.unsubscribe` contains only `subscription_id`; an unknown ID is an idempotent no-op.
 
 The server sends `output.unsubscribe` when the PWA leaves the view. All output subscriptions end on disconnect. A connector permits at most four output subscriptions, one per terminal, and enforces an aggregate eight reads per second. Output messages are coalesced under backpressure and never persisted.
 
@@ -352,7 +354,7 @@ The connector rejects a host ID that does not match its certificate identity. It
 | `expected` | object | Exact state epoch, agent generation, label, allowed statuses, and conditional prompt fingerprint. |
 | `operation` | tagged object | One operation from the table below. |
 
-The server never sends the same `action_id` twice. The connector starts a monotonic timer after reading the complete frame, keeps a bounded in-memory set of completed action IDs for the current connection, and rejects a duplicate. It does not persist or resume actions after restart. V1 has no action cancellation message.
+The server never sends the same `action_id` twice. Before connector dispatch, the control plane durably inserts that ID in audit storage under a unique constraint shared by all browser and connector sessions. A duplicate is rejected as `DUPLICATE_ACTION` without dispatch. The connector also starts a monotonic timer after reading the complete frame, keeps a bounded in-memory set of completed action IDs for the current connection, and rejects a duplicate. It does not persist or resume actions after restart. V1 has no action cancellation message.
 
 All five body fields are required. `target.host_id` is a UUID, `instance_id` is 1 to 80 ASCII letters, digits, dots, underscores, or hyphens, and `terminal_id` is a 1 to 128 character opaque Herdr ID. `timeout_ms` is an integer from 1 through the operation maximum.
 
@@ -360,7 +362,7 @@ The required `expected` object is:
 
 | Field | Type | Contract |
 | --- | --- | --- |
-| `state_epoch` | UUID | Must exactly equal the current instance epoch. |
+| `state_epoch` | UUIDv7 | Must exactly equal the current instance epoch. |
 | `agent_generation` | integer | Must exactly equal the current generation and be at least 1. |
 | `herdr_input_revision` | integer | Required for all actions; writes require a nonzero revision that Herdr checks atomically. |
 | `agent` | string | Must exactly equal the current authoritative label, 1 to 80 characters. |
@@ -370,7 +372,7 @@ The required `expected` object is:
 
 Any status or prompt change increments `agent_generation`, including a transition from blocked to working and back to blocked. Every write binds to both the exact published generation and Herdr-issued revision. Connector generation rejects stale control-plane state; Herdr revision and content hash close the local validation-to-write race.
 
-The normative machine-readable request, operation, receipt, and result schemas are in `protocol/connector-v1-action.schema.json`. They reject unknown operation fields, define UTF-8 byte-limit extensions, and take precedence over examples in this document.
+The normative machine-readable request, operation, receipt, and result schemas are in `protocol/connector-v1-action.schema.json`. They reject unknown operation fields, use standard code-point bounds that guarantee the documented UTF-8 ceilings, and take precedence over examples in this document.
 
 ### Operations
 
@@ -400,7 +402,7 @@ Operation-specific outcomes:
 | `agent.interrupt` | `herdr_acknowledged: true` | Stale target/state, not an agent, or Herdr rejection before enqueue | Local response lost or send error after the write call begins. |
 | `prompt.respond` | `herdr_acknowledged: true`, `option_id` | Prompt changed, unknown option, stale target/state, not blocked, or Herdr rejection before atomic enqueue | Local response lost after Herdr may have accepted the atomic input. |
 
-Pre-execution code mapping is common to every operation: malformed body to `INVALID_MESSAGE`, unsupported operation to `UNSUPPORTED_OPERATION`, wrong host to `UNAUTHORIZED_HOST`, expired monotonic timer to `DEADLINE_EXCEEDED`, missing terminal to `TARGET_NOT_FOUND`, changed terminal route or identity to `STALE_TARGET`, epoch/generation/Herdr-input-revision/agent/status mismatch to `STALE_STATE`, absent active agent to `NOT_AN_AGENT`, unavailable socket to `HERDR_UNAVAILABLE`, and unsupported local API or missing checked-input capability to `HERDR_INCOMPATIBLE`. Text and key validation use `INVALID_TEXT` and `INVALID_KEYS`. Prompt fingerprint, content hash, or option mismatch uses `PROMPT_CHANGED`. Herdr errors known to occur before enqueue use `HERDR_REJECTED`; errors after execution begins use `OUTCOME_UNKNOWN`.
+Pre-execution code mapping is common to every operation: malformed body to `INVALID_MESSAGE`, unsupported operation to `UNSUPPORTED_OPERATION`, wrong host to `UNAUTHORIZED_HOST`, expired monotonic timer to `DEADLINE_EXCEEDED`, missing terminal to `TARGET_NOT_FOUND`, changed terminal route or identity to `STALE_TARGET`, epoch/generation/Herdr-input-revision/agent/status mismatch to `STALE_STATE`, absent active agent to `NOT_AN_AGENT`, unavailable socket to `HERDR_UNAVAILABLE`, and unsupported local API or missing checked-input capability to `HERDR_INCOMPATIBLE`. Text and key validation use `INVALID_TEXT` and `INVALID_KEYS`. Prompt fingerprint, content hash, or option mismatch uses `PROMPT_CHANGED`. A side-effect-free internal write failure before the checked local enqueue call is `rejected/INTERNAL`; an internal read failure is `failed/INTERNAL`. Herdr errors known to occur before enqueue use `failed/HERDR_REJECTED`; errors after write execution begins use `unknown/OUTCOME_UNKNOWN`.
 
 The operation timeout includes lock wait, final validation, local socket write, and Herdr response. Timeout is checked again after the terminal lock is acquired. A timeout before `action.received` is a rejection. A timeout after `action.received` follows the operation-specific unknown rule above. The connector does not attempt to cancel a Herdr request after writing it.
 
@@ -441,7 +443,7 @@ If the connector connection closes after the server sent a write action but befo
 
 ### Stable result codes
 
-`INVALID_MESSAGE`, `UNSUPPORTED_PROTOCOL`, `UNSUPPORTED_MESSAGE`, `UNSUPPORTED_OPERATION`, `UNAUTHORIZED_HOST`, `HOST_ALREADY_CONNECTED`, `TARGET_NOT_FOUND`, `STALE_TARGET`, `STALE_STATE`, `NOT_AN_AGENT`, `PROMPT_CHANGED`, `INVALID_TEXT`, `INVALID_KEYS`, `DEADLINE_EXCEEDED`, `CONNECTION_LOST`, `HERDR_UNAVAILABLE`, `HERDR_INCOMPATIBLE`, `HERDR_REJECTED`, `OUTCOME_UNKNOWN`, `AUDIT_UNAVAILABLE`, `BUSY`, `RATE_LIMITED`, and `INTERNAL`.
+`INVALID_MESSAGE`, `UNSUPPORTED_PROTOCOL`, `UNSUPPORTED_MESSAGE`, `UNSUPPORTED_OPERATION`, `UNAUTHORIZED_HOST`, `HOST_ALREADY_CONNECTED`, `DUPLICATE_ACTION`, `TARGET_NOT_FOUND`, `STALE_TARGET`, `STALE_STATE`, `NOT_AN_AGENT`, `PROMPT_CHANGED`, `INVALID_TEXT`, `INVALID_KEYS`, `DEADLINE_EXCEEDED`, `CONNECTION_LOST`, `HERDR_UNAVAILABLE`, `HERDR_INCOMPATIBLE`, `HERDR_REJECTED`, `OUTCOME_UNKNOWN`, `AUDIT_UNAVAILABLE`, `BUSY`, `RATE_LIMITED`, and `INTERNAL`.
 
 Protocol-level failures use `protocol.error` with `in_reply_to` message ID or null, stable `code`, and a sanitized `message`. Valid action failures always use `action.result`.
 
@@ -490,7 +492,7 @@ Do not persist:
 
 Connector connect, disconnect, enrollment, rotation, revocation, incompatibility, and repeated malformed-message events also produce metadata-only audit records.
 
-Audit intent must commit before the server dispatches a write action. If durable audit storage is unavailable, reject the action with `AUDIT_UNAVAILABLE`. Audit rows are append-only to the service account, retained for 90 days by default, readable only by the operator and backup principal, and included in encrypted backups. Completion-audit failure raises an alert and blocks subsequent writes until storage recovers. Issue #2 owns the final backup, integrity-export, and retention implementation.
+Audit intent must commit before the server dispatches a write action. If durable audit storage is unavailable, reject the action with `AUDIT_UNAVAILABLE`. Audit rows are append-only to the service account, retained for 90 days by default, readable only by the operator and backup principal, and included in encrypted backups. The action ID and first-seen timestamp remain as a metadata-only deduplication tombstone after detailed row retention so reconnects and retention cannot make an old action replayable. Completion-audit failure raises an alert and blocks subsequent writes until storage recovers. Issue #2 owns the final backup, integrity-export, and retention implementation.
 
 Every connector-provided string is untrusted. Validate type, length, and control-character policy at ingestion, render it as text rather than HTML, and escape it in logs and metrics labels. This includes display names, agent labels, project labels, result messages, prompt excerpts, and output.
 

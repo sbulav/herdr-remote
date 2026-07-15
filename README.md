@@ -46,7 +46,7 @@ Open [herdr-demo.pages.dev](https://herdr-demo.pages.dev) on your phone, paste t
 
 ## Architecture
 
-The current architecture is shown below. The proposed outbound-connector replacement is documented in [Connector protocol v1](docs/connector-protocol-v1.md); it is an investigation result, not yet implemented.
+The current architecture is shown below. The proposed enterprise replacement is documented in [Connector protocol v1](docs/connector-protocol-v1.md) and [Browser protocol v1](docs/browser-protocol-v1.md); it is not yet implemented.
 
 ```
                     ┌──────────────────────────────┐

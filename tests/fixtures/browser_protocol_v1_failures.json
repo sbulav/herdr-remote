@@ -1,0 +1,191 @@
+{
+  "operation_outcomes": [
+    {
+      "type": "agent.read",
+      "required_capabilities": ["read.v1"],
+      "request": {"source": "recent_unwrapped", "lines": 120},
+      "success": {"status": "succeeded", "code": null, "result": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 1, "herdr_input_revision": 42, "text": "bounded output", "truncated": false, "content_revision": "sha256:d047501029296dac4c1be5e22f05ff7229244184357ac63424d75339009a77e3"}},
+      "pre_execution_failure": {"status": "failed", "code": "HERDR_REJECTED"},
+      "internal_before_enqueue": {"status": "failed", "code": "INTERNAL"},
+      "timeout_before_receipt": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+      "timeout_after_receipt": {"status": "failed", "code": "DEADLINE_EXCEEDED"},
+      "disconnect_after_receipt": {"status": "failed", "code": "CONNECTION_LOST"},
+      "browser_disconnect_unresolved": {"status": "failed", "code": "CONNECTION_LOST"}
+    },
+    {
+      "type": "agent.send_text",
+      "required_capabilities": ["checked_input.v1"],
+      "request": {"text": "please continue"},
+      "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+      "pre_execution_failure": {"status": "rejected", "code": "INVALID_TEXT"},
+      "internal_before_enqueue": {"status": "rejected", "code": "INTERNAL"},
+      "timeout_before_receipt": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+      "timeout_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "disconnect_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "browser_disconnect_unresolved": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+    },
+    {
+      "type": "agent.send_keys",
+      "required_capabilities": ["checked_input.v1"],
+      "request": {"keys": ["tab"]},
+      "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+      "pre_execution_failure": {"status": "rejected", "code": "INVALID_KEYS"},
+      "internal_before_enqueue": {"status": "rejected", "code": "INTERNAL"},
+      "timeout_before_receipt": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+      "timeout_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "disconnect_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "browser_disconnect_unresolved": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+    },
+    {
+      "type": "agent.send_input",
+      "required_capabilities": ["checked_input.v1"],
+      "request": {"text": "run tests", "keys": ["enter"]},
+      "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+      "pre_execution_failure": {"status": "rejected", "code": "STALE_STATE"},
+      "internal_before_enqueue": {"status": "rejected", "code": "INTERNAL"},
+      "timeout_before_receipt": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+      "timeout_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "disconnect_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "browser_disconnect_unresolved": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+    },
+    {
+      "type": "agent.interrupt",
+      "required_capabilities": ["checked_input.v1"],
+      "request": {},
+      "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+      "pre_execution_failure": {"status": "rejected", "code": "NOT_AN_AGENT"},
+      "internal_before_enqueue": {"status": "rejected", "code": "INTERNAL"},
+      "timeout_before_receipt": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+      "timeout_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "disconnect_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "browser_disconnect_unresolved": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+    },
+    {
+      "type": "prompt.respond",
+      "required_capabilities": ["checked_input.v1", "prompt.respond.v1"],
+      "request": {"option_id": "allow_once"},
+      "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true, "option_id": "allow_once"}},
+      "pre_execution_failure": {"status": "rejected", "code": "PROMPT_CHANGED"},
+      "internal_before_enqueue": {"status": "rejected", "code": "INTERNAL"},
+      "timeout_before_receipt": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+      "timeout_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "disconnect_after_receipt": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+      "browser_disconnect_unresolved": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "read_only_write_rejection",
+      "herdr_version": "0.7.3",
+      "advertised_capabilities": ["read.v1", "output.subscribe.v1", "prompt.snapshot.v1"],
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000020", "type": "action.request", "sent_at": "2026-07-15T08:00:10Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000120", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "timeout_ms": 3000, "expected": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 1, "herdr_input_revision": 0, "agent": "opencode", "statuses": ["blocked"], "prompt_fingerprint": "sha256:98d24061159b076badd71663b311176182b81aef3b880b49e0b6270290c8765d", "herdr_content_hash": "sha256:f828c76986ae1b7474beb7422eb3a1ecf6c0c8c3fe8f31fde07746fbb63d0536"}, "operation": {"type": "prompt.respond", "option_id": "allow_once"}}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000021", "type": "action.result", "sent_at": "2026-07-15T08:00:10Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000120", "operation_type": "prompt.respond", "status": "rejected", "code": "HERDR_INCOMPATIBLE", "result": null}}
+      ]
+    },
+    {
+      "name": "stale_state",
+      "current_agent_generation": 2,
+      "current_herdr_input_revision": 43,
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000022", "type": "action.request", "sent_at": "2026-07-15T08:00:11Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000121", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "timeout_ms": 3000, "expected": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 1, "herdr_input_revision": 42, "agent": "opencode", "statuses": ["blocked"]}, "operation": {"type": "agent.send_keys", "keys": ["enter"]}}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000023", "type": "action.result", "sent_at": "2026-07-15T08:00:11Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000121", "operation_type": "agent.send_keys", "status": "rejected", "code": "STALE_STATE", "result": null}}
+      ]
+    },
+    {
+      "name": "timeout_before_receipt",
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000024", "type": "action.request", "sent_at": "2026-07-15T08:00:12Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000122", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "timeout_ms": 3000, "expected": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 2, "herdr_input_revision": 43, "agent": "opencode", "statuses": ["blocked"]}, "operation": {"type": "agent.send_text", "text": "please continue"}}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000025", "type": "action.result", "sent_at": "2026-07-15T08:00:15Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000122", "operation_type": "agent.send_text", "status": "rejected", "code": "DEADLINE_EXCEEDED", "result": null}}
+      ]
+    },
+    {
+      "name": "timeout_after_receipt",
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000026", "type": "action.request", "sent_at": "2026-07-15T08:00:16Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000123", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "timeout_ms": 3000, "expected": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 2, "herdr_input_revision": 43, "agent": "opencode", "statuses": ["blocked"]}, "operation": {"type": "agent.send_input", "text": "run tests", "keys": ["enter"]}}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000027", "type": "action.received", "sent_at": "2026-07-15T08:00:16Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000123"}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000028", "type": "action.result", "sent_at": "2026-07-15T08:00:19Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000123", "operation_type": "agent.send_input", "status": "unknown", "code": "OUTCOME_UNKNOWN", "result": null}}
+      ]
+    },
+    {
+      "name": "disconnect_unknown_write",
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000029", "type": "action.request", "sent_at": "2026-07-15T08:00:20Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000124", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "timeout_ms": 3000, "expected": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 2, "herdr_input_revision": 43, "agent": "opencode", "statuses": ["working", "blocked"]}, "operation": {"type": "agent.interrupt"}}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000002a", "type": "action.received", "sent_at": "2026-07-15T08:00:20Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000124"}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000002b", "type": "action.result", "sent_at": "2026-07-15T08:00:21Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000124", "operation_type": "agent.interrupt", "status": "unknown", "code": "OUTCOME_UNKNOWN", "result": null}}
+      ]
+    },
+    {
+      "name": "same_session_duplicate_action",
+      "previously_audited_action_id": "019f64ca-3000-7000-8000-000000000120",
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000033", "type": "action.request", "sent_at": "2026-07-15T08:00:26Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000120", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "timeout_ms": 3000, "expected": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 2, "herdr_input_revision": 43, "agent": "opencode", "statuses": ["working"]}, "operation": {"type": "agent.interrupt"}}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000034", "type": "action.result", "sent_at": "2026-07-15T08:00:26Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000120", "operation_type": "agent.interrupt", "status": "rejected", "code": "DUPLICATE_ACTION", "result": null}}
+      ]
+    },
+    {
+      "name": "cross_session_duplicate_action",
+      "previously_audited_action_id": "019f64ca-3000-7000-8000-000000000120",
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000035", "type": "action.request", "sent_at": "2026-07-15T08:00:27Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000140", "action_id": "019f64ca-3000-7000-8000-000000000120", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "timeout_ms": 3000, "expected": {"state_epoch": "019f64ca-3000-7000-8000-000000000139", "connector_epoch": "019f64ca-3000-7000-8000-000000000110", "agent_generation": 2, "herdr_input_revision": 43, "agent": "opencode", "statuses": ["working"]}, "operation": {"type": "agent.interrupt"}}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000036", "type": "action.result", "sent_at": "2026-07-15T08:00:27Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000140", "action_id": "019f64ca-3000-7000-8000-000000000120", "operation_type": "agent.interrupt", "status": "rejected", "code": "DUPLICATE_ACTION", "result": null}}
+      ]
+    },
+    {
+      "name": "state_gap_resync",
+      "last_accepted_sequence": 1,
+      "messages": [
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000002c", "type": "state.delta", "sent_at": "2026-07-15T08:00:22Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "state_epoch": "019f64ca-3000-7000-8000-000000000103", "sequence": 3, "changes": [{"operation": "agent.remove", "target": {"host_id": "019f64ca-1000-7000-8000-000000000002", "instance_id": "default", "terminal_id": "term_656a094363b4b4"}, "reason": "pane_closed"}]}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000002d", "type": "state.resync", "sent_at": "2026-07-15T08:00:22Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "expected_epoch": "019f64ca-3000-7000-8000-000000000103", "expected_sequence": 2, "reason": "gap"}},
+        {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000002e", "type": "session.snapshot", "sent_at": "2026-07-15T08:00:23Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "state_epoch": "019f64ca-3000-7000-8000-000000000130", "sequence": 0, "server_time": "2026-07-15T08:00:23Z", "hosts": []}}
+      ]
+    }
+  ],
+  "action_recovery": [
+    {
+      "name": "unresolved_write_before_receipt",
+      "receipt_observed": false,
+      "response": {"action_id": "019f64ca-3000-7000-8000-000000000125", "operation_type": "agent.send_text", "status": "unknown", "code": "OUTCOME_UNKNOWN", "requested_at": "2026-07-15T08:00:28Z", "completed_at": "2026-07-15T08:00:29Z"}
+    },
+    {
+      "name": "unresolved_write_after_receipt",
+      "receipt_observed": true,
+      "response": {"action_id": "019f64ca-3000-7000-8000-000000000126", "operation_type": "agent.send_input", "status": "unknown", "code": "OUTCOME_UNKNOWN", "requested_at": "2026-07-15T08:00:30Z", "completed_at": "2026-07-15T08:00:31Z"}
+    },
+    {
+      "name": "unresolved_read",
+      "receipt_observed": false,
+      "response": {"action_id": "019f64ca-3000-7000-8000-000000000127", "operation_type": "agent.read", "status": "failed", "code": "CONNECTION_LOST", "requested_at": "2026-07-15T08:00:32Z", "completed_at": "2026-07-15T08:00:33Z"}
+    }
+  ],
+  "semantic_invalid_cases": [
+    {"name": "duplicate_host_id", "base": "initial_session_snapshot"},
+    {"name": "duplicate_instance_id", "base": "initial_session_snapshot"},
+    {"name": "duplicate_terminal_id", "base": "initial_session_snapshot"},
+    {"name": "duplicate_prompt_option_id", "base": "initial_prompt_snapshot"},
+    {"name": "connector_generation_regression", "base": "initial_snapshot_and_agent_delta"},
+    {"name": "connector_epoch_change_without_resync", "base": "initial_session_snapshot"},
+    {"name": "prompt_response_without_checked_input", "base": "initial_session_snapshot"},
+    {"name": "herdr_073_checked_input", "base": "initial_session_snapshot"},
+    {"name": "herdr_073_nonzero_revision", "base": "initial_session_snapshot"}
+  ],
+  "schema_invalid_frames": [
+    {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000037", "type": "action.result", "sent_at": "2026-07-15T08:00:34Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000128", "operation_type": "agent.send_text", "status": "unknown", "code": "CONNECTION_LOST", "result": null}},
+    {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000038", "type": "action.result", "sent_at": "2026-07-15T08:00:35Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-000000000129", "operation_type": "agent.read", "status": "failed", "code": "OUTCOME_UNKNOWN", "result": null}},
+    {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000039", "type": "action.result", "sent_at": "2026-07-15T08:00:36Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-00000000012a", "operation_type": "agent.send_input", "status": "failed", "code": "DEADLINE_EXCEEDED", "result": null}},
+    {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000003a", "type": "action.result", "sent_at": "2026-07-15T08:00:37Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-00000000012b", "operation_type": "agent.send_keys", "status": "failed", "code": "STALE_STATE", "result": null}},
+    {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000003b", "type": "action.result", "sent_at": "2026-07-15T08:00:38Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "action_id": "019f64ca-3000-7000-8000-00000000012c", "operation_type": "agent.send_text", "status": "failed", "code": "INTERNAL", "result": null}}
+  ],
+  "invalid_frames": [
+    {
+      "name": "malformed_unknown_field",
+      "frame": {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-00000000002f", "type": "output.unsubscribe", "sent_at": "2026-07-15T08:00:24Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "subscription_id": "019f64ca-3000-7000-8000-000000000104", "unexpected": true}},
+      "response": {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000030", "type": "protocol.error", "sent_at": "2026-07-15T08:00:24Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "in_reply_to": "019f64ca-3000-7000-8000-00000000002f", "code": "INVALID_MESSAGE", "fatal": false}}
+    },
+    {
+      "name": "unsupported_type",
+      "frame": {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000031", "type": "future.message", "sent_at": "2026-07-15T08:00:25Z", "body": {}},
+      "response": {"protocol": 1, "message_id": "019f64ca-3000-7000-8000-000000000032", "type": "protocol.error", "sent_at": "2026-07-15T08:00:25Z", "body": {"session_id": "019f64ca-3000-7000-8000-000000000101", "in_reply_to": "019f64ca-3000-7000-8000-000000000031", "code": "UNSUPPORTED_MESSAGE", "fatal": false}}
+    }
+  ]
+}
