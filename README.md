@@ -46,6 +46,8 @@ Open [herdr-demo.pages.dev](https://herdr-demo.pages.dev) on your phone, paste t
 
 ## Architecture
 
+The current architecture is shown below. The proposed outbound-connector replacement is documented in [Connector protocol v1](docs/connector-protocol-v1.md); it is an investigation result, not yet implemented.
+
 ```
                     ┌──────────────────────────────┐
                     │  macOS Menu Bar (Herdi.app)   │ ← zero config, local

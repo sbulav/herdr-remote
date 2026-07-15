@@ -1,0 +1,10 @@
+{"id":"probe:ping","method":"ping","params":{}}
+{"id":"probe:ping","result":{"type":"pong","version":"0.7.3","protocol":16,"capabilities":{"live_handoff":true,"detached_server_daemon":true}}}
+{"id":"probe:snapshot","method":"session.snapshot","params":{}}
+{"id":"probe:snapshot","result":{"type":"session_snapshot","snapshot":{"version":"0.7.3","protocol":16,"workspaces":[],"tabs":[],"panes":[],"layouts":[],"agents":[]}}}
+{"id":"probe:subscribe","method":"events.subscribe","params":{"subscriptions":[{"type":"pane.agent_status_changed","pane_id":"w1:p1"}]}}
+{"id":"probe:subscribe","result":{"type":"subscription_started"}}
+{"id":"probe:get","method":"agent.get","params":{"target":"term_example"}}
+{"id":"probe:get","result":{"type":"agent_info","agent":{"terminal_id":"term_example","agent":"opencode","agent_status":"working","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","focused":true,"revision":0}}}
+{"id":"probe:read","method":"pane.read","params":{"pane_id":"w1:p1","source":"recent_unwrapped","lines":120,"format":"text","strip_ansi":true}}
+{"id":"probe:read","result":{"type":"pane_read","read":{"pane_id":"w1:p1","workspace_id":"w1","tab_id":"w1:t1","source":"recent_unwrapped","format":"text","text":"bounded output","revision":0,"truncated":false}}}

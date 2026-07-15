@@ -1,0 +1,56 @@
+[
+  {
+    "type": "agent.read",
+    "request": {"source": "recent_unwrapped", "lines": 120},
+    "success": {"status": "succeeded", "code": null, "result": {"state_epoch": "019f64ca-3000-7000-8000-000000000103", "agent_generation": 1, "herdr_input_revision": 42, "text": "bounded output", "truncated": false, "content_revision": "sha256:d047501029296dac4c1be5e22f05ff7229244184357ac63424d75339009a77e3"}},
+    "pre_execution_failure": {"status": "failed", "code": "HERDR_REJECTED"},
+    "timeout_before_execution": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+    "timeout_after_execution": {"status": "failed", "code": "DEADLINE_EXCEEDED"},
+    "disconnect": {"status": "failed", "code": "CONNECTION_LOST"}
+  },
+  {
+    "type": "agent.send_text",
+    "request": {"text": "please continue"},
+    "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+    "pre_execution_failure": {"status": "rejected", "code": "INVALID_TEXT"},
+    "timeout_before_execution": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+    "timeout_after_execution": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+    "disconnect": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+  },
+  {
+    "type": "agent.send_keys",
+    "request": {"keys": ["tab"]},
+    "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+    "pre_execution_failure": {"status": "rejected", "code": "INVALID_KEYS"},
+    "timeout_before_execution": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+    "timeout_after_execution": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+    "disconnect": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+  },
+  {
+    "type": "agent.send_input",
+    "request": {"text": "run tests", "keys": ["enter"]},
+    "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+    "pre_execution_failure": {"status": "rejected", "code": "INVALID_TEXT"},
+    "timeout_before_execution": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+    "timeout_after_execution": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+    "disconnect": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+  },
+  {
+    "type": "agent.interrupt",
+    "request": {},
+    "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true}},
+    "pre_execution_failure": {"status": "rejected", "code": "NOT_AN_AGENT"},
+    "timeout_before_execution": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+    "timeout_after_execution": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+    "disconnect": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+  },
+  {
+    "type": "prompt.respond",
+    "request": {"option_id": "allow_once"},
+    "success": {"status": "succeeded", "code": null, "result": {"herdr_acknowledged": true, "option_id": "allow_once"}},
+    "pre_execution_failure": {"status": "rejected", "code": "PROMPT_CHANGED"},
+    "timeout_before_execution": {"status": "rejected", "code": "DEADLINE_EXCEEDED"},
+    "timeout_after_execution": {"status": "unknown", "code": "OUTCOME_UNKNOWN"},
+    "disconnect": {"status": "unknown", "code": "OUTCOME_UNKNOWN"}
+  }
+]

@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://herdr.example/schemas/connector-v1-action.schema.json",
+  "title": "Herdr connector v1 action messages",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "uuid_v7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host_id": {"$ref": "#/$defs/uuid"},
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "terminal_id": {"type": "string", "minLength": 1, "maxLength": 128}
+      },
+      "required": ["host_id", "instance_id", "terminal_id"]
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state_epoch": {"$ref": "#/$defs/uuid"},
+        "agent_generation": {"type": "integer", "minimum": 1},
+        "herdr_input_revision": {"type": "integer", "minimum": 0},
+        "agent": {"type": "string", "minLength": 1, "maxLength": 80},
+        "statuses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {"enum": ["idle", "working", "blocked", "done", "unknown"]}
+        },
+        "prompt_fingerprint": {"$ref": "#/$defs/hash"},
+        "herdr_content_hash": {"$ref": "#/$defs/hash"}
+      },
+      "required": [
+        "state_epoch",
+        "agent_generation",
+        "herdr_input_revision",
+        "agent",
+        "statuses"
+      ]
+    },
+    "key": {
+      "enum": [
+        "enter",
+        "esc",
+        "tab",
+        "shift+tab",
+        "up",
+        "down",
+        "left",
+        "right",
+        "pageup",
+        "pagedown",
+        "home",
+        "end",
+        "backspace",
+        "delete",
+        "ctrl+c"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "not": {"pattern": "[\\u0000-\\u001f\\u007f-\\u009f]"}
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {"$ref": "#/$defs/key"}
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.read"},
+            "source": {"enum": ["visible", "recent", "recent_unwrapped", "detection"]},
+            "lines": {"type": "integer", "minimum": 1, "maximum": 1000}
+          },
+          "required": ["type", "source", "lines"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.send_text"},
+            "text": {"$ref": "#/$defs/text"}
+          },
+          "required": ["type", "text"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.send_keys"},
+            "keys": {"$ref": "#/$defs/keys"}
+          },
+          "required": ["type", "keys"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "agent.send_input"},
+            "text": {"$ref": "#/$defs/text"},
+            "keys": {"$ref": "#/$defs/keys"}
+          },
+          "required": ["type"],
+          "anyOf": [{"required": ["text"]}, {"required": ["keys"]}]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"type": {"const": "agent.interrupt"}},
+          "required": ["type"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {"const": "prompt.respond"},
+            "option_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "pattern": "^[A-Za-z0-9._-]+$"
+            }
+          },
+          "required": ["type", "option_id"]
+        }
+      ]
+    },
+    "action_request_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {"$ref": "#/$defs/uuid_v7"},
+        "target": {"$ref": "#/$defs/target"},
+        "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 5000},
+        "expected": {"$ref": "#/$defs/expected"},
+        "operation": {"$ref": "#/$defs/operation"}
+      },
+      "required": ["action_id", "target", "timeout_ms", "expected", "operation"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "properties": {"type": {"const": "agent.read"}},
+                "required": ["type"]
+              }
+            }
+          },
+          "else": {"properties": {"timeout_ms": {"maximum": 3000}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "properties": {"type": {"const": "prompt.respond"}},
+                "required": ["type"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "expected": {
+                "required": ["prompt_fingerprint", "herdr_content_hash"]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "expected": {
+                "not": {
+                  "anyOf": [
+                    {"required": ["prompt_fingerprint"]},
+                    {"required": ["herdr_content_hash"]}
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "action_received_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"action_id": {"$ref": "#/$defs/uuid_v7"}},
+      "required": ["action_id"]
+    },
+    "read_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state_epoch": {"$ref": "#/$defs/uuid"},
+        "agent_generation": {"type": "integer", "minimum": 1},
+        "herdr_input_revision": {"type": "integer", "minimum": 0},
+        "text": {"type": "string", "maxLength": 32768},
+        "truncated": {"type": "boolean"},
+        "content_revision": {"$ref": "#/$defs/hash"}
+      },
+      "required": [
+        "state_epoch",
+        "agent_generation",
+        "herdr_input_revision",
+        "text",
+        "truncated",
+        "content_revision"
+      ]
+    },
+    "write_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"herdr_acknowledged": {"const": true}},
+      "required": ["herdr_acknowledged"]
+    },
+    "prompt_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "herdr_acknowledged": {"const": true},
+        "option_id": {"type": "string", "minLength": 1, "maxLength": 80}
+      },
+      "required": ["herdr_acknowledged", "option_id"]
+    },
+    "action_result_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {"$ref": "#/$defs/uuid_v7"},
+        "operation_type": {
+          "enum": [
+            "agent.read",
+            "agent.send_text",
+            "agent.send_keys",
+            "agent.send_input",
+            "agent.interrupt",
+            "prompt.respond"
+          ]
+        },
+        "status": {"enum": ["succeeded", "rejected", "failed", "unknown"]},
+        "code": {"type": ["string", "null"], "maxLength": 80},
+        "message": {"type": ["string", "null"], "maxLength": 512},
+        "result": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/read_result"},
+            {"$ref": "#/$defs/write_result"},
+            {"$ref": "#/$defs/prompt_result"}
+          ]
+        }
+      },
+      "required": ["action_id", "operation_type", "status", "code", "message", "result"],
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "succeeded"}}},
+          "then": {"properties": {"code": {"type": "null"}}},
+          "else": {
+            "properties": {"code": {"type": "string", "minLength": 1}, "result": {"type": "null"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "succeeded"}, "operation_type": {"const": "agent.read"}},
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"result": {"$ref": "#/$defs/read_result"}}}
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "succeeded"}, "operation_type": {"const": "prompt.respond"}},
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"result": {"$ref": "#/$defs/prompt_result"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "succeeded"},
+              "operation_type": {
+                "enum": ["agent.send_text", "agent.send_keys", "agent.send_input", "agent.interrupt"]
+              }
+            },
+            "required": ["status", "operation_type"]
+          },
+          "then": {"properties": {"result": {"$ref": "#/$defs/write_result"}}}
+        }
+      ]
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocol": {"const": 1},
+        "message_id": {"$ref": "#/$defs/uuid_v7"},
+        "type": {"enum": ["action.request", "action.received", "action.result"]},
+        "sent_at": {"type": "string", "format": "date-time"},
+        "body": {"type": "object"}
+      },
+      "required": ["protocol", "message_id", "type", "sent_at", "body"]
+    }
+  },
+  "oneOf": [
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "action.request"}, "body": {"$ref": "#/$defs/action_request_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "action.received"}, "body": {"$ref": "#/$defs/action_received_body"}}}
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "#/$defs/envelope"},
+        {"properties": {"type": {"const": "action.result"}, "body": {"$ref": "#/$defs/action_result_body"}}}
+      ]
+    }
+  ]
+}
