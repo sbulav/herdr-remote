@@ -1,6 +1,6 @@
 # Connector protocol v1
 
-Status: proposed investigation result for issue #3. This protocol is not implemented.
+Status: implemented enterprise v1 contract. The Go implementation lives under `cmd/` and `internal/`; the checked schema remains normative.
 
 ## Decision
 
@@ -181,7 +181,7 @@ Every application message has this shape:
     "display_name": "workstation",
     "platform": "linux",
     "architecture": "amd64",
-    "capabilities": []
+    "capabilities": ["state.inventory.v1"]
   }
 }
 ```
@@ -209,7 +209,7 @@ The connector sends `connector.hello` first using bootstrap `protocol: 0`. Boots
 | `display_name` | string | Yes | Untrusted operator-facing host label, 1 to 80 characters. |
 | `platform` | string | Yes | `linux` or `darwin` in v1. |
 | `architecture` | string | Yes | For example `amd64` or `arm64`. |
-| `capabilities` | string array | Yes | Supported optional operations. |
+| `capabilities` | string array | Yes | Supported optional operations. Unknown syntactically valid additive capability names do not change the fixed body shape. |
 
 The server responds using bootstrap `protocol: 0` with `server.welcome`:
 
@@ -227,9 +227,21 @@ The server responds using bootstrap `protocol: 0` with `server.welcome`:
 
 If there is no common major, the server sends bootstrap `protocol.error` with `UNSUPPORTED_PROTOCOL` and closes with WebSocket code 4406. After `server.welcome`, both peers encode all messages with `selected_protocol` and use only `accepted_capabilities`.
 
+`accepted_capabilities` is the intersection of capabilities offered by the connector and implemented by the server. An old connector that does not offer `state.inventory.v1` remains compatible with a new server. A new connector sends no inventory to an old server that does not return `state.inventory.v1`, so that server never receives an unknown application message.
+
+Some pre-inventory v1 servers used a closed capability-name validator. The connector retries with the baseline v1 capability set when the extended hello receives explicit evidence from that validator: bootstrap `protocol.error` with code `INVALID_MESSAGE` and message `invalid or duplicate capability`, or close code `1008` with that exact reason. The actual prior implementation could instead close with an ambiguous EOF immediately after decoding the extended hello. That EOF permits one ephemeral baseline retry for the current reconnect only. Timeout, cancellation, `GoingAway`, network errors other than that EOF, and internal-error closure never trigger fallback.
+
+After explicit rejection, the connector reconnects once and omits only `state.inventory.v1`. It enables, logs, and caches baseline compatibility mode for the sanitized server endpoint only after that retry receives and validates `server.welcome`. An ambiguous-EOF retry is logged but never cached, even after a valid welcome, so the next reconnect starts extended negotiation again. If any baseline retry fails before a valid welcome, the mode is not cached. Authentication failures, protocol-major rejection, and failures after welcome never initiate fallback. Mandatory transport and security behavior, including TLS and mTLS, is unchanged; required capabilities are never silently removed.
+
 ## State stream
 
 After `server.welcome`, each configured Herdr instance performs reconciliation and then sends `state.snapshot`. No partial pre-reconciliation state is published.
+
+### `state.inventory`
+
+When both peers negotiate `state.inventory.v1`, the connector sends `state.inventory` as the first protocol-1 application message after `server.welcome`, before any snapshots. Its `instance_ids` array is the complete configured instance set for the connection, with 1 to 16 unique IDs. The control plane removes previously projected instances omitted from this inventory using browser `instance.remove/unconfigured`, including their agents and transient output subscriptions. It retains listed returning instances until their new snapshot is processed as `instance.epoch_changed`.
+
+Without the negotiated capability, the connector does not send this message and the control plane conservatively retains previously projected instances because it cannot distinguish an unconfigured instance from one whose snapshot has not arrived. The fixed protocol-0 hello body never carries inventory.
 
 ### `state.snapshot`
 

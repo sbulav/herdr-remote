@@ -1,6 +1,6 @@
 # Browser protocol v1
 
-Status: proposed enterprise v1 foundation. This protocol is not implemented.
+Status: implemented enterprise v1 contract. The Go implementation lives under `cmd/` and `internal/`; the checked schema remains normative.
 
 The browser protocol is the same-origin WebSocket contract between the control plane and the PWA. The browser never connects to a host connector. The connector contract is documented separately in [Connector protocol v1](connector-protocol-v1.md).
 
@@ -110,6 +110,8 @@ An agent upsert contains the complete browser-safe mutable agent state. Its `con
 
 A connector epoch change is never projected as an ordinary `instance.upsert`. The control plane sends an `instance.epoch_changed` delta with the exact previous and replacement connector epochs. The PWA accepts the sequence number, invalidates the browser projection, disables actions, and immediately sends `state.resync`. The next message from the control plane is a full snapshot with a new browser `state_epoch`. An agent generation may restart only under the new connector epoch.
 
+On connector reconnect, peers that negotiated `state.inventory.v1` exchange a protocol-1 `state.inventory` message after the fixed bootstrap handshake. The control plane retains returning instances long enough to process their replacement snapshots as `instance.epoch_changed`, but immediately emits `instance.remove` with reason `unconfigured` for previously projected instances absent from the inventory. Removing an instance also removes its agents and transient output subscriptions, and subsequent full snapshots cannot contain it. Without that negotiated additive capability, the control plane conservatively retains prior instances.
+
 The PWA applies a delta only when all of these conditions hold:
 
 1. `session_id` equals the current WebSocket session.
@@ -136,13 +138,13 @@ No replay depends on the server, not browser behavior. Before dispatch, the cont
 
 The durable audit store retains the action ID and first-seen timestamp as a metadata-only deduplication tombstone after detailed audit retention expires. Reuse therefore cannot become valid because a session reconnects or an old audit detail row expires.
 
-If the browser disconnects while an action has no browser-visible terminal result, the control plane finalizes it conservatively regardless of whether `action.received` was sent:
+If the browser disconnects while an action has no durably recorded connector result, the control plane finalizes it conservatively regardless of whether `action.received` was sent:
 
 - an unresolved read becomes `failed/CONNECTION_LOST`;
 - an unresolved write becomes `unknown/OUTCOME_UNKNOWN`, including a write that had not reached the receipt boundary;
 - no action is dispatched again after either browser or connector reconnects.
 
-Late connector completion cannot change this conservative browser-disconnect classification. It may be recorded as separate metadata for diagnosis, but it cannot cause replay or replace the terminal browser status.
+A connector result committed before the browser frame is delivered remains the authoritative outcome even if frame delivery then fails. The metadata-only action-status endpoint returns that known outcome after reconnect. A connector result arriving only after the control plane has durably classified an unresolved disconnect cannot replace that conservative terminal status, and it never causes replay.
 
 After reconnect, the PWA may query `GET /api/v1/actions/<action_id>` on the same origin. The endpoint uses the OIDC cookie and returns the strict metadata-only `action_status_response` definition from the schema. It returns action ID, operation type, status, code, and timestamps. It never returns input, keys, prompts, output, or a successful read result. The operator must inspect a fresh snapshot and submit any intentional retry with a new UUIDv7 action ID.
 
@@ -246,6 +248,8 @@ The result status is:
 
 A timeout after receipt is `failed/DEADLINE_EXCEEDED` for a read and `unknown/OUTCOME_UNKNOWN` for a write. Connector disconnect follows the same side-effect boundary, using `failed/CONNECTION_LOST` for a read.
 
+The control plane also starts its own monotonic deadline when dispatch succeeds. It does not rely on the connector to report timeout. If a connected connector remains silent through that deadline, the control plane removes the action from the in-flight set and durably records `failed/DEADLINE_EXCEEDED` for a read or `unknown/OUTCOME_UNKNOWN` for a write. A late connector result cannot replace that terminal timeout classification.
+
 Status and code combinations are closed:
 
 - `unknown` is valid only for a write and only with `OUTCOME_UNKNOWN`;
@@ -256,7 +260,7 @@ Status and code combinations are closed:
 - a definitive Herdr rejection before enqueue may use `failed/HERDR_REJECTED`;
 - `succeeded` requires a null code and the operation-specific result.
 
-For an active browser connection, a write becomes `unknown/OUTCOME_UNKNOWN` only after `action.received`. The conservative browser-disconnect rule above is the exception: any write still unresolved when that browser socket closes is recorded as unknown regardless of whether receipt reached the browser.
+For an active browser connection, a write becomes `unknown/OUTCOME_UNKNOWN` only after `action.received`. The conservative browser-disconnect rule above is the exception for an action that still lacks a durable connector result when the socket closes. A known result already committed by the control plane remains queryable even when its browser frame was not delivered.
 
 An `agent.read` success may contain bounded terminal text. Other successful writes return only acknowledgement metadata. Failed results contain a stable code and `result: null`. They have no free-form message or content field. The PWA maps stable codes to locally owned display strings.
 
