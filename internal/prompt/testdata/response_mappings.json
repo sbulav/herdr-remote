@@ -1,0 +1,53 @@
+[
+  {
+    "name": "kiro tool permission",
+    "prompt": "Do you want to allow this tool call?\n\n> yes, single permission\n> trust, always allow\n> no (tab to edit)",
+    "options": [
+      { "id": "yes_single_permission", "label": "yes, single permission", "text": "yes, single permission" },
+      { "id": "trust_always_allow", "label": "trust, always allow", "text": "trust, always allow" },
+      { "id": "no_tab_to_edit", "label": "no (tab to edit)", "text": "no (tab to edit)" }
+    ]
+  },
+  {
+    "name": "kiro subagent permission",
+    "prompt": "approve all pending\nconfigure individually",
+    "options": [
+      { "id": "approve_all_pending", "label": "approve all pending", "text": "approve all pending" },
+      { "id": "configure_individually", "label": "configure individually", "text": "configure individually" },
+      { "id": "exit_cancel_subagents", "label": "exit (cancel subagents)", "text": "exit (cancel subagents)" }
+    ]
+  },
+  {
+    "name": "opencode permission dialog",
+    "prompt": "△ Permission required\n  Bash · git status\n  Allow once   Allow always   Reject\n  ↔ select   enter confirm   esc dismiss",
+    "options": [
+      { "id": "allow_once", "label": "Allow once", "keys": ["enter"] },
+      { "id": "allow_always", "label": "Allow always", "keys": ["right", "enter", "enter"] },
+      { "id": "reject", "label": "Reject", "keys": ["esc"] }
+    ]
+  },
+  {
+    "name": "claude numbered yes no",
+    "prompt": "Do you want to proceed?\n ❯ 1. Yes\n   2. No",
+    "options": [
+      { "id": "option_1", "label": "1. Yes", "text": "1" },
+      { "id": "option_2", "label": "2. No", "text": "2" }
+    ]
+  },
+  {
+    "name": "claude unnumbered fallback",
+    "prompt": "Ask rule Bash(git add *) overrides auto mode for this command.\nDo you want to proceed?",
+    "options": [
+      { "id": "option_1", "label": "1. Yes", "text": "1" },
+      { "id": "option_2", "label": "2. No", "text": "2" }
+    ]
+  },
+  {
+    "name": "generic bullet options",
+    "prompt": "Choose a deployment:\n• Deploy canary\n• Deploy stable\n- esc to cancel",
+    "options": [
+      { "id": "deploy_canary", "label": "Deploy canary", "text": "Deploy canary" },
+      { "id": "deploy_stable", "label": "Deploy stable", "text": "Deploy stable" }
+    ]
+  }
+]

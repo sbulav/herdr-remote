@@ -34,7 +34,12 @@ type Snapshot struct {
 	Options     []BoundOption
 }
 
-var numbered = regexp.MustCompile(`(?m)^[ \t]*[❯>]?[ \t]*(\d+)\.\s+(\S[^\n]*)`)
+var (
+	numbered  = regexp.MustCompile(`(?m)^[ \t]*[❯>]?[ \t]*(\d+)\.\s+(\S[^\n]*)`)
+	bullet    = regexp.MustCompile(`(?m)^[ \t]*(?:[❯>•*-]|\[[ \t]?\])[ \t]+([[:alpha:]][^\n]{0,80})`)
+	optionID  = regexp.MustCompile(`[^a-z0-9._-]+`)
+	trimPunct = regexp.MustCompile(`[.,;]+$`)
+)
 
 func Extract(in Input) Snapshot {
 	normalized := strings.ReplaceAll(strings.ReplaceAll(in.Text, "\r\n", "\n"), "\r", "\n")
@@ -118,7 +123,7 @@ func detect(text string) []BoundOption {
 		return textOptions([]string{"approve all pending", "configure individually", "exit (cancel subagents)"})
 	}
 	if strings.Contains(lower, "permission required") || (strings.Contains(lower, "allow once") && strings.Contains(lower, "allow always") && strings.Contains(lower, "reject")) {
-		return []BoundOption{keyOption("allow_once", "Allow once", []string{"enter"}), keyOption("allow_always", "Allow always", []string{"right", "enter"}), keyOption("reject", "Reject", []string{"right", "right", "enter"})}
+		return []BoundOption{keyOption("allow_once", "Allow once", []string{"enter"}), keyOption("allow_always", "Allow always", []string{"right", "enter", "enter"}), keyOption("reject", "Reject", []string{"esc"})}
 	}
 	matches := numbered.FindAllStringSubmatch(text, -1)
 	if len(matches) >= 2 {
@@ -130,29 +135,63 @@ func detect(text string) []BoundOption {
 			}
 			seen[m[1]] = true
 			label := m[1] + ". " + strings.TrimSpace(m[2])
-			out = append(out, keyOption("option_"+m[1], label, []string{m[1], "enter"}))
+			out = append(out, textOption("option_"+m[1], label, m[1]))
 		}
 		return out
+	}
+	if options := bulletOptions(text); len(options) >= 2 {
+		return options
+	}
+	if strings.Contains(lower, "do you want to proceed") || strings.Contains(lower, "do you want to allow") || strings.Contains(lower, "ask rule") || strings.Contains(lower, "/permissions to let auto mode decide") {
+		return []BoundOption{textOption("option_1", "1. Yes", "1"), textOption("option_2", "2. No", "2")}
 	}
 	if strings.Contains(lower, "[y/n]") || strings.Contains(lower, "yes (y)") || strings.Contains(lower, "proceed (y)") {
 		return textOptions([]string{"y", "n"})
 	}
+	if strings.Contains(lower, "allow once") && (strings.Contains(lower, "deny") || strings.Contains(lower, "allow for this session")) {
+		return textOptions([]string{"allow once", "allow for this session", "deny"})
+	}
 	return nil
+}
+
+func bulletOptions(text string) []BoundOption {
+	matches := bullet.FindAllStringSubmatch(text, -1)
+	options := make([]BoundOption, 0, len(matches))
+	seen := map[string]bool{}
+	for _, match := range matches {
+		label := strings.TrimSpace(trimPunct.ReplaceAllString(match[1], ""))
+		key := strings.ToLower(label)
+		if len(label) < 2 || seen[key] || strings.Contains(key, "esc to") || strings.Contains(key, "tab to") || strings.Contains(key, "ctrl+") || strings.Contains(key, "type to") || strings.Contains(key, "press ") {
+			continue
+		}
+		seen[key] = true
+		options = append(options, textOption(slug(key), label, label))
+	}
+	return options
 }
 
 func textOptions(labels []string) []BoundOption {
 	out := make([]BoundOption, 0, len(labels))
 	for _, l := range labels {
-		id := strings.NewReplacer(" ", "_", ",", "", "(", "", ")", "", "/", "_").Replace(strings.ToLower(l))
-		if len(id) > 80 {
-			id = id[:80]
-		}
-		out = append(out, BoundOption{PromptOption: protocol.PromptOption{ID: id, Label: l}, Text: l})
+		out = append(out, textOption(slug(l), l, l))
 	}
 	return out
 }
+func textOption(id, label, text string) BoundOption {
+	return BoundOption{PromptOption: protocol.PromptOption{ID: id, Label: label}, Text: text}
+}
 func keyOption(id, label string, keys []string) BoundOption {
 	return BoundOption{PromptOption: protocol.PromptOption{ID: id, Label: label}, Keys: keys}
+}
+func slug(value string) string {
+	id := strings.Trim(optionID.ReplaceAllString(strings.ToLower(value), "_"), "_.-")
+	if id == "" {
+		id = "option"
+	}
+	if len(id) > 80 {
+		id = strings.TrimRight(id[:80], "_.-")
+	}
+	return id
 }
 func hash(s string) string {
 	h := sha256.Sum256([]byte(s))

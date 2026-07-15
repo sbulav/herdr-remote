@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:nix": "bash scripts/run-playwright-nix.sh",
+    "verify:ci": "npm run typecheck && npm test && npm run build",
     "verify": "npm run typecheck && npm test && npm run build && npm run test:e2e",
     "verify:nix": "npm run typecheck && npm test && npm run build && npm run test:e2e:nix",
     "preview": "vite preview"

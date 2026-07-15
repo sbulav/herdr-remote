@@ -1,137 +1,97 @@
-# herdr-remote
+# Herdr Remote
 
-Monitor and approve [herdr](https://herdr.dev) agents from your phone, menu bar, or Telegram -- no SSH required.
+Herdr Remote is a self-hosted control plane and mobile PWA for monitoring Herdr agents. An outbound connector links each Herdr host to the control plane without opening an inbound port on the host.
 
-**[Try the live demo](https://herdr-demo.pages.dev)** -- no install, works on any phone
+## Components
 
-## Install (macOS -- 10 seconds)
+- **Control plane:** serves the authenticated PWA and browser API, stores metadata-only audit records, and accepts connectors on a separate mTLS listener.
+- **Connector:** runs as the same operating-system user as Herdr and talks to its local Unix socket.
+- **PWA:** uses the same-origin browser API and keeps prompt and terminal content in memory only.
 
-Download [Herdi.app](https://github.com/dcolinmorgan/herdr-remote/releases/latest) and drag to Applications. Done.
+Browser access requires an OIDC-aware reverse proxy. Connector access requires deployment-owned TLS and client-certificate authorities. There is no shared-token or URL-token fallback.
 
-The menu bar app monitors all your local herdr agents automatically -- no relay, no config, no account.
-
-Or via terminal:
-```bash
-curl -sL https://github.com/dcolinmorgan/herdr-remote/releases/latest/download/Herdi-0.5.0.dmg -o /tmp/Herdi.dmg && open /tmp/Herdi.dmg
-```
-
-## Screenshots
-
-| Agent List | Terminal View |
-|:--:|:--:|
-| ![Agent list](public/agent_list.jpeg) | ![Terminal interaction](public/terminal_view.jpeg) |
-
-## Remote monitoring (phone/Telegram)
-
-For monitoring agents on remote machines or from your phone:
-
-```bash
-herdr plugin install dcolinmorgan/herdr-push
-./relay/start.sh
-```
-
-Open [herdr-demo.pages.dev](https://herdr-demo.pages.dev) on your phone, paste the tunnel URL.
-
-## Features
-
-- **macOS menu bar app** -- see all agents at a glance, approve from desktop (zero config)
-- **Web app** -- approve blocked agents from your phone with one tap
-- **Telegram bot** -- /agents, /read, /send, /reply, /trust, /interrupt
-- **Terminal TUI** -- kanban dashboard in a herdr pane
-- **Agent timeline** -- track when agents worked, blocked, and finished
-- **Daily digest** -- Telegram summary of agent activity
-- **11 themes** -- dark, herdr, light, sand, clay, dune, nord, rose, dracula, kanagawa, midnight
-- **Token auth** -- shared secret protects your relay
-- **Zero-dep plugin** -- [`herdr-push`](https://github.com/dcolinmorgan/herdr-push) uses only `curl`
+Herdr 0.7.3 is read-only because it does not provide checked atomic input. Status and bounded output work, but writes remain disabled until Herdr advertises `checked_input.v1`.
 
 ## Architecture
 
-The current relay architecture is shown below. The separate enterprise Go control plane and outbound connector are documented in the [enterprise backend guide](docs/enterprise-backend.md), [Connector protocol v1](docs/connector-protocol-v1.md), and [Browser protocol v1](docs/browser-protocol-v1.md).
-
-```
-                    ┌──────────────────────────────┐
-                    │  macOS Menu Bar (Herdi.app)   │ ← zero config, local
-                    │  monitors herdr directly      │
-                    └──────────────────────────────┘
-
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│  Web App     │  │  Telegram    │  │  TUI         │
-│  (phone)     │  │  Bot         │  │  (terminal)  │
-└──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-       │                  │                  │
-       └───── WebSocket ──┴──────────────────┘
-                   │
-        ┌──────────┴──────────┐
-        │   relay (:8375)     │  ← Cloudflare tunnel
-        │   WS + HTTP POST    │
-        └──────────┬──────────┘
-                   │
-     ┌─────────────┼─────────────┐
-     │ local poll  │ herdr-push  │
-     │ (herdr CLI) │ (HTTP POST) │
-     │             │             │
-  ┌──┴──┐    ┌────┴────┐   ┌────┴────┐
-  │herdr│    │herdr    │   │herdr    │
-  │local│    │remote A │   │remote B │
-  └─────┘    └─────────┘   └─────────┘
+```text
+phone or desktop browser
+  | HTTPS + OIDC session
+  v
+OIDC reverse proxy
+  | loopback HTTP + trusted identity headers
+  v
+Herdr control plane
+  | WSS + mutual TLS
+  v
+outbound connector
+  | local NDJSON Unix socket
+  v
+Herdr server and agent PTYs
 ```
 
-## Telegram Bot
+The browser never connects to a host connector. The control plane never initiates a connection to a Herdr host.
 
-Full agent interaction from Telegram:
+## Quick start
+
+See [QUICKSTART.md](QUICKSTART.md) for a deployment walkthrough. The checked examples are:
+
+- [`nix/examples/controlplane.nix`](nix/examples/controlplane.nix)
+- [`nix/examples/connector.nix`](nix/examples/connector.nix)
+
+They contain placeholder identities and secret paths, not usable credentials.
+
+## Nix outputs
 
 ```bash
-export HERDR_TG_TOKEN="your-token"
-export HERDR_TG_CHAT_ID="your-chat-id"
-uv run relay/herdr_telegram.py
+nix build .#herdr-controlplane
+nix build .#herdr-connector
+nix build .#herdr-pwa
 ```
 
-Commands: `/agents` `/status` `/read` `/reply` `/send` `/trust` `/interrupt`
+The flake exports:
 
-Notifications when agents block or finish.
+- `nixosModules.controlplane`
+- `nixosModules.connector`
+- `homeManagerModules.connector`
 
-## Web App
+Use the NixOS connector module for a system Herdr service. Use the Home Manager module when Herdr runs in the user's systemd session.
 
-**[herdr-demo.pages.dev](https://herdr-demo.pages.dev)**
+## Development
 
-- Tap any agent to open a live terminal view
-- Special mobile keyboard: Tab, Esc, ^C, y/n + floating arrow d-pad
-- Agent icons: Kiro, Codex, Claude, Grok, Copilot auto-detected
-- Context menu: open terminal, approve, read output, interrupt
-- Quick-action buttons for blocked agents (yes/trust/no)
-- Browser notifications when agents block
-- PWA -- add to Home Screen for app-like experience
-
-## Terminal TUI
+Enter the pinned toolchain and run the standard checks:
 
 ```bash
-uv run relay/herdr_tui.py
+nix develop
+make check
+nix flake check
 ```
 
-## Relay Setup
+`make check` runs formatting checks, Go vet/tests/race tests, Python protocol conformance tests, and PWA type/unit/build checks. Playwright stays separate because it needs browser runtimes:
 
 ```bash
-git clone https://github.com/dcolinmorgan/herdr-remote
-cd herdr-remote/relay
-./start.sh
+make e2e       # systems with Playwright browser dependencies installed
+make e2e-nix   # reproducible NixOS FHS runner
 ```
 
-Starts relay + Cloudflare tunnel, prints URL. See [QUICKSTART.md](QUICKSTART.md) for details.
+## Documentation
 
-## Token Auth
+- [Quick start](QUICKSTART.md)
+- [Operations runbook](docs/operations.md)
+- [Enterprise backend configuration](docs/enterprise-backend.md)
+- [Connector protocol v1](docs/connector-protocol-v1.md)
+- [Browser protocol v1](docs/browser-protocol-v1.md)
 
-```bash
-export HERDR_RELAY_TOKEN="$(openssl rand -hex 16)"
-uv run relay/herdr_relay.py
-```
+## Security boundary
 
-## Native host power controls
+- Keep the browser listener on loopback and expose it only through the OIDC proxy.
+- Expose the connector listener only with mTLS client verification enabled.
+- Provision private keys and session secrets outside the Nix store.
+- Run each connector as the same user as its Herdr server.
+- Treat connector host compromise as access to that user's agent privileges.
 
-The native relay accepts typed `wake_host` and `shutdown_host` operations when `HERDR_POWER_HOST_ID` and `HERDR_POWER_HOST_MAC` are configured. Wake runs `wakeonlan` locally; shutdown uses the configured preset SSH target and the fixed command `sudo -n systemctl poweroff`. The relay never accepts shell text from a client.
+See the [operations runbook](docs/operations.md) for enrollment, rotation, backup, monitoring, and incident procedures.
 
-## Requirements
+## License
 
-- macOS 14+ (menu bar app)
-- Python 3.10+ with [uv](https://docs.astral.sh/uv/) (relay/TUI/bot)
-- `cloudflared` (for remote access)
-- herdr 0.7+
+[AGPL-3.0-only](LICENSE)

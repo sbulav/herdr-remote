@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+npx playwright install chromium webkit
+
 display_number=93
 Xvfb ":$display_number" -screen 0 1920x1200x24 &
 xvfb_pid=$!

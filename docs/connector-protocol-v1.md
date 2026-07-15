@@ -4,14 +4,14 @@ Status: implemented enterprise v1 contract. The Go implementation lives under `c
 
 ## Decision
 
-Replace SSH polling, HTTP plugin pushes, UDP ingestion, and direct browser-to-relay control with two Go services:
+The architecture replaces legacy inbound host polling and direct browser-to-host control with two Go services:
 
 - a central control plane on the self-hosted NixOS server;
 - an outbound connector running as the same OS user as each Herdr server.
 
 Use TypeScript for the PWA, but do not use TypeScript/Node for either daemon. Keep the wire contract language-neutral JSON so a future implementation can change language without changing protocol semantics.
 
-The connector uses Herdr's local socket API as its only control surface. The `herdr-push` plugin is not part of v1.
+The connector uses Herdr's local socket API as its only control surface.
 
 ## Confirmed product constraints
 
@@ -19,7 +19,7 @@ The connector uses Herdr's local socket API as its only control surface. The `he
 - Up to 10 hosts and tens of concurrent agents.
 - Connectors make outbound connections only.
 - V1 supports status, output, prompt responses, text, special keys, and interrupt.
-- Session launch, termination, host power, and arbitrary shell execution are out of scope.
+- Session launch, termination, host management, and arbitrary shell execution are out of scope.
 - Action audit metadata is durable; prompt and terminal content is transient.
 - Interactive actions fail closed and are never replayed automatically.
 - The PWA requires reliable Web Push, but browser and push protocols are outside this connector contract. The same-origin PWA contract is specified in [Browser protocol v1](browser-protocol-v1.md).
@@ -63,7 +63,7 @@ The following live probes succeeded:
 - Newly created panes trigger status-subscription replacement followed by `agent.get`. Any subscription disconnect triggers full reconciliation. A full snapshot every 30 seconds bounds undetectable Herdr event loss.
 - Status events identify panes, so the connector resolves them through its snapshot cache or `agent.get` before publishing an agent update. Connector sequence numbers protect only the upstream stream; they do not repair Herdr source gaps.
 - Generic `pane.output_changed` is not a raw subscription option in protocol 16. The connector reads only actively viewed agents, coalesces unchanged output, and stops polling when the view subscription closes.
-- The external `herdr-push` plugin only POSTs a partial status event. It provides no authenticated connector identity, command result, snapshot, ordering, or reconnect behavior and is not suitable for this design.
+- Partial status ingestion is not a connector substitute because it provides no authenticated connector identity, command result, snapshot, ordering, or reconnect behavior.
 - Agent-specific Claude JSONL and OpenCode SQLite scraping is not required in v1. Herdr remains the terminal and state authority.
 
 ### Herdr safety gap
@@ -89,7 +89,7 @@ Before calling v1 fully fail-closed, add an upstream Herdr operation equivalent 
 }
 ```
 
-Herdr must issue an `input_revision` that increments on agent identity, semantic status, or detection-buffer content changes, return terminal text and that revision from one atomic read snapshot, validate it with the other write preconditions, validate the current detection-buffer hash for prompt responses, and enqueue the complete input atomically in one server operation. In 0.7.3, reads return revision `0` and `pane.send_input` enqueues text and keys separately. Production v1 therefore disables every write operation on Herdr 0.7.3 and advertises the instance as read-only. Full interaction is blocked until Herdr provides atomic read revisions and checked atomic input; there is no unsafe compatibility mode. Any error after a checked local write begins still has outcome `unknown` unless the future Herdr contract proves otherwise.
+Herdr must issue an `input_revision` that increments on agent identity, semantic status, or detection-buffer content changes, return terminal text and that revision from one atomic read snapshot, validate it with the other write preconditions, validate the current detection-buffer hash for prompt responses, and enqueue the complete input atomically in one server operation. In 0.7.3, reads return revision `0` and `pane.send_input` enqueues text and keys separately. V1 therefore disables every write operation on Herdr 0.7.3 and advertises the instance as read-only. Full interaction is blocked until Herdr provides atomic read revisions and checked atomic input; there is no unsafe compatibility mode. Any error after a checked local write begins still has outcome `unknown` unless the future Herdr contract proves otherwise.
 
 ## Architecture
 
@@ -137,7 +137,7 @@ The browser never connects to a host connector. It uses the separate [Browser pr
 6. The connector rotates its certificate seven days before expiry while authenticated with the current certificate.
 7. Revocation prevents new connections and closes an existing connection for that host.
 
-OIDC authenticates the browser only. OIDC cookies, shared relay tokens, URL query tokens, and browser local storage are not connector credentials.
+OIDC authenticates the browser only. OIDC cookies, shared tokens, URL query tokens, and browser local storage are not connector credentials.
 
 Only one connector connection may own a host at a time. `connector_instance_id` identifies one connector process. A second connection for an owned host is rejected with `HOST_ALREADY_CONNECTED` until the existing connection closes or misses its heartbeat lease. Certificate rotation may overlap certificate validity, but it does not permit concurrent connections. Actions are routed only to the connection that owns the current host lease.
 
@@ -534,59 +534,13 @@ Connector protocol and Herdr socket protocol are separate version domains.
 - Server supports the current and previous connector major for at least one release. Connector advertises a min/max range.
 - Roll server first, then connectors. The server sends only capabilities accepted during handshake.
 - A connector upgrade reconnects and sends new snapshots; it does not migrate in-flight actions.
-- On startup the connector runs `ping`, inspects `herdr api schema --json`, and verifies required method names and response fields. Protocol 16 behavior observed in Herdr 0.7.3 is the read-only baseline. Production writes additionally require the future checked atomic input schema and `checked_input.v1` capability.
+- On startup the connector runs `ping`, inspects `herdr api schema --json`, and verifies required method names and response fields. Protocol 16 behavior observed in Herdr 0.7.3 is the read-only baseline. Writes additionally require the future checked atomic input schema and `checked_input.v1` capability.
 - A newer Herdr protocol is accepted only if required methods remain present. Missing or incompatible methods put the instance in `incompatible` state and disable writes.
 - Protocol fixtures are versioned in the repository. Both server and connector implementations must pass the same fixture and rolling-version tests.
 
-## Language comparison
+## Implementation
 
-| Criterion | Python | Go | Rust | TypeScript/Node |
-| --- | --- | --- | --- | --- |
-| Existing domain reuse | Best | Moderate | Low | Low |
-| Reproducible Nix packaging | Adequate | Excellent | Excellent | Adequate |
-| Per-host artifact | Runtime plus dependencies | Single binary | Single binary | Runtime plus dependencies |
-| Linux/macOS connector delivery | Operationally heavy | Simple cross-build | More cross-build setup | Operationally heavy |
-| Concurrency assurance | Async type checks are limited; logical races need explicit state machines | Race detector catches data races; logical races still need explicit state machines | Strongest memory/data-race guarantees; logical races still remain | Event-loop data races are limited; logical races need explicit state machines |
-| Security posture | Memory-safe runtime, dynamic protocol typing, larger runtime/dependency closure | Memory-safe runtime, typed protocol, mature standard TLS, moderate dependency surface | Strongest compile-time memory safety, typed protocol, mature Rustls stack | Memory-safe runtime, typed source but runtime validation required, largest dependency surface |
-| Observability | Mature libraries, framework choice required | Standard `slog`, mature Prometheus and OpenTelemetry | Excellent `tracing`, more integration code | Mature logging and OpenTelemetry, runtime-heavy deployment |
-| Migration cost | Lowest code port, but transport/state architecture is discarded | Port only prompt behavior and fixtures from the 1,038-line relay | Same rewrite plus more type/lifetime design work | Same rewrite with no existing Node server code to reuse |
-| Build and onboarding cost | Low | Low to moderate | Highest | Moderate |
-| Runtime closure | Largest | Small | Smallest | Largest |
-| Fit for this scale | Adequate | Best overall | More complexity than needed | Weak operational fit |
-
-### Recommendation
-
-Use Go for both the control plane and connector.
-
-Reasons:
-
-- `buildGoModule` gives reproducible Nix builds and a small runtime closure.
-- `CGO_ENABLED=0` produces simple Linux and macOS connector artifacts.
-- Goroutines and channels fit independent local-socket, WebSocket, heartbeat, and output loops; the race detector is a useful CI gate for data races, while protocol state machines and conformance tests address logical races.
-- `slog`, Prometheus, and OpenTelemetry support structured operations without a framework-heavy runtime.
-- One language allows one shared protocol package and one conformance suite.
-- The current Python process architecture is being replaced, so retaining Python saves less work than it first appears.
-
-Rust is the runner-up if future requirements prioritize compile-time memory and concurrency guarantees over delivery speed. TypeScript remains appropriate for the PWA only. Python parsing behavior can be preserved as golden tests and ported selectively.
-
-Do not port the current SSH, UDP, mDNS, global-client-state, transcript scraping, Telegram, macOS, launch, termination, or power-control code into the new daemon boundary.
-
-## Migration boundary
-
-Retain as behavior, not architecture:
-
-- prompt option detection and response mapping, after adding prompt hashes and golden tests;
-- existing structured-output tests where they still describe desired PWA rendering;
-- Herdr status labels and bounded pane-read behavior.
-
-Replace:
-
-- `relay/herdr_relay.py` transport, authentication, routing, process state, and host polling;
-- `herdr-push` HTTP event ingestion;
-- shared token and URL-token authentication;
-- pane-ID-only routing;
-- browser-owned connection credentials;
-- direct command dispatch without results and preconditions.
+The control plane and connector are Go commands under `cmd/`, with shared protocol and service code under `internal/`. Nix builds both as CGO-free binaries. The PWA is TypeScript and consumes the checked browser schema. Shared tokens, browser-owned connector credentials, pane-only routing, and unguarded command dispatch are not supported.
 
 ## Verification plan
 
@@ -622,4 +576,3 @@ The checked fixture at `tests/fixtures/connector_protocol_v1.ndjson` exercises t
 - Herdr socket API: <https://herdr.dev/docs/socket-api/>
 - Herdr agent model: <https://herdr.dev/docs/agents/>
 - Herdr source: <https://github.com/ogulcancelik/herdr>
-- Existing push plugin: <https://github.com/dcolinmorgan/herdr-push>

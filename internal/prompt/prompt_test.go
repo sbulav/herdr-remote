@@ -1,10 +1,49 @@
 package prompt
 
 import (
+	"encoding/json"
+	"os"
+	"reflect"
 	"testing"
 
 	"github.com/dcolinmorgan/herdr-remote/internal/protocol"
 )
+
+type goldenOption struct {
+	ID    string   `json:"id"`
+	Label string   `json:"label"`
+	Text  string   `json:"text,omitempty"`
+	Keys  []string `json:"keys,omitempty"`
+}
+
+type goldenPrompt struct {
+	Name    string         `json:"name"`
+	Prompt  string         `json:"prompt"`
+	Options []goldenOption `json:"options"`
+}
+
+func TestPromptResponseMappingsGolden(t *testing.T) {
+	data, err := os.ReadFile("testdata/response_mappings.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []goldenPrompt
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range cases {
+		t.Run(test.Name, func(t *testing.T) {
+			snapshot := Extract(Input{Text: test.Prompt, HostID: "host", InstanceID: "default", TerminalID: "term"})
+			got := make([]goldenOption, 0, len(snapshot.Options))
+			for _, option := range snapshot.Options {
+				got = append(got, goldenOption{ID: option.ID, Label: option.Label, Text: option.Text, Keys: option.Keys})
+			}
+			if !reflect.DeepEqual(got, test.Options) {
+				t.Fatalf("response mapping\n got: %#v\nwant: %#v", got, test.Options)
+			}
+		})
+	}
+}
 
 func TestPromptHashAndAdapterBinding(t *testing.T) {
 	in := Input{Text: "header\r\nPermission required: run tests?\r\nAllow once Allow always Reject", HostID: "019f64ca-1000-7000-8000-000000000002", InstanceID: "default", TerminalID: "term"}

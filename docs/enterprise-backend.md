@@ -37,8 +37,8 @@ controlplane \
   -browser-listen 127.0.0.1:8080 \
   -connector-listen :8443 \
   -origin https://herdr.example.com \
-  -database /var/lib/herdr-control/control.db \
-  -static-dir /var/lib/herdr-control/pwa \
+  -database /var/lib/herdr-controlplane/control.db \
+  -static-dir /var/lib/herdr-controlplane/pwa \
   -session-secret-file /run/credentials/session-secret \
   -private-ca-cert-file /run/credentials/connector-ca.crt \
   -private-ca-key-file /run/credentials/connector-ca.key \
@@ -95,16 +95,17 @@ connector \
   -control-plane-url wss://connectors.herdr.example.com:8443/v1/connectors/ws \
   -host-id 019f64ca-1000-7000-8000-000000000002 \
   -display-name workstation \
-  -cert-file ~/.config/herdr-connector/client.crt \
+  -cert-file ~/.local/state/herdr-connector/client.crt \
+  -initial-cert-file /run/secrets/herdr/client.crt \
   -key-file ~/.config/herdr-connector/client.key \
   -server-ca-file /etc/ssl/certs/control-plane-ca.crt \
-  -herdr-socket /run/user/1000/herdr.sock \
+  -herdr-socket ~/.config/herdr/herdr.sock \
   -instance-id default
 ```
 
 For multiple local Herdr servers, replace `-herdr-socket` and `-instance-id` with repeatable `-herdr-instance INSTANCE_ID=/absolute/socket` flags. One host lease supports at most 16 configured instances.
 
-The connector exposes no listener. It reconnects with full jitter, sends WebSocket heartbeats, and rebuilds state after reconnect. It never replays an action.
+The connector copies `-initial-cert-file` to `-cert-file` only when the mutable certificate is absent. Rotation atomically replaces `-cert-file`, so its parent directory must be writable; the private key remains read-only. The connector exposes no listener. It reconnects with full jitter, sends WebSocket heartbeats, and rebuilds state after reconnect. It never replays an action.
 
 Herdr 0.7.3 is always read-only. A newer Herdr version becomes write-capable only when `ping` advertises `checked_input.v1` and the inspected socket schema contains the exact atomic `agent.send_input_checked` method and preconditions.
 

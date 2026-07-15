@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Verify native runner architecture
+        run: test "$(nix eval --raw --impure --expr builtins.currentSystem)" = "${{ matrix.system }}"
+      - name: Standard checks
+        run: nix develop --command make check
+      - name: Flake checks
+        run: nix flake check --print-build-logs
+      - name: Evaluate every declared system
+        run: nix flake check --all-systems --no-build
+      - name: Build release packages
+        run: nix build --no-link ".#packages.${{ matrix.system }}.herdr-controlplane" ".#packages.${{ matrix.system }}.herdr-connector" ".#packages.${{ matrix.system }}.herdr-pwa"
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install browser dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npx playwright install --with-deps chromium webkit
+      - name: Browser end-to-end tests
+        run: make e2e

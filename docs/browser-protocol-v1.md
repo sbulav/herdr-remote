@@ -224,7 +224,7 @@ Every action request contains:
 | `agent.interrupt` | `checked_input.v1` | 3 seconds | no payload fields |
 | `prompt.respond` | `checked_input.v1` and `prompt.respond.v1` | 3 seconds | bound option ID |
 
-The schema defines the complete key allowlist and standard JSON Schema code-point limits. Input has at most 4,096 code points and therefore at most 16 KiB of UTF-8. Output has at most 32,768 code points and therefore at most 128 KiB. Prompt excerpts have at most 2,048 code points and therefore at most 8 KiB. No non-standard byte-limit extension is required. Newlines, tabs, escapes, and interrupts use key names rather than control characters in text. V1 defines no launch, terminate, host power, arbitrary shell, Telegram, or macOS operation.
+The schema defines the complete key allowlist and standard JSON Schema code-point limits. Input has at most 4,096 code points and therefore at most 16 KiB of UTF-8. Output has at most 32,768 code points and therefore at most 128 KiB. Prompt excerpts have at most 2,048 code points and therefore at most 8 KiB. No non-standard byte-limit extension is required. Newlines, tabs, escapes, and interrupts use key names rather than control characters in text. V1 defines no launch, terminate, host-management, arbitrary-shell, or platform-specific operation.
 
 The control plane validates the authenticated operator and browser session, transactionally inserts the durably unique action audit intent, and then validates target, capabilities, state preconditions, timeout, audit availability, and rate limits before dispatch. The connector repeats target, capability, and state checks immediately before local execution.
 

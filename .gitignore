@@ -6,7 +6,6 @@ __pycache__/
 .DS_Store
 .swiftpm/
 .venv/
-.wrangler/
 node_modules/
 test-results/
 playwright-report/

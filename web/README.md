@@ -11,11 +11,11 @@ npm run verify
 
 `verify` runs protocol generation, strict type checking, all Vitest/RTL/axe tests, the production InjectManifest build, and the Chromium/WebKit Playwright matrix.
 
-The browser matrix drives the real React UI, reducer, protocol validator, and native WebSocket client through read-only and writable protocol lifecycles. It supplies an in-browser control-plane route; starting the future repository-root control-plane integration is intentionally outside this web package.
+The browser matrix drives the React UI, reducer, protocol validator, and browser WebSocket client through read-only and writable protocol lifecycles. It supplies an in-browser protocol route so the UI suite remains independent of service credentials.
 
 ### NixOS
 
-Playwright's downloaded WebKit build needs an FHS library environment on NixOS, and headless WPE may fail to initialize EGL on systems without a compatible renderer. The checked-in runner builds an FHS environment from the repository's locked nixpkgs input and runs WebKit under Xvfb without changing `flake.nix`:
+Playwright's WebKit build needs an FHS library environment on NixOS, and headless WPE may fail to initialize EGL on systems without a compatible renderer. The checked-in runner builds an FHS environment from the locked nixpkgs input, installs the browser version pinned by `package-lock.json`, and runs WebKit under Xvfb:
 
 ```bash
 npm ci

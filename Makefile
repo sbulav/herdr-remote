@@ -1,22 +1,34 @@
-.PHONY: relay-install relay-run relay-plugin test lint check ios-build
+.PHONY: check fmt-check go-check protocol-check pwa-check e2e e2e-nix
 
-relay-install:
-	pip install -r relay/requirements.txt
+check: fmt-check go-check protocol-check pwa-check
 
-relay-run:
-	python3 relay/herdr_relay.py
+fmt-check:
+	@test -z "$$(gofmt -l $$(git ls-files '*.go'))" || { \
+		printf '%s\n' 'Go files need gofmt:'; \
+		gofmt -l $$(git ls-files '*.go'); \
+		exit 1; \
+	}
+	nixfmt --check flake.nix nix/examples/*.nix nix/modules/*.nix nix/tests/*.nix web/scripts/playwright-nixos.nix
 
-relay-plugin:
-	herdr plugin link relay/
+go-check:
+	go vet ./...
+	go test ./...
+	go test -race ./...
 
-test:
-	./tests/run.sh
+protocol-check:
 	python3 -m unittest discover -s tests -p 'test_*.py'
 
-lint:
-	ruff check --select E9,F63,F7,F82 relay tests
+pwa-check:
+	cd web && npm ci --no-audit --no-fund
+	cd web && npm run typecheck
+	cd web && npm test
+	cd web && npm run build
+	git diff --exit-code -- web/src/protocol/generated-validator.ts
 
-check: lint test
+e2e:
+	cd web && npm ci --no-audit --no-fund
+	cd web && npm run test:e2e
 
-ios-build:
-	cd herdi-ios && swift build
+e2e-nix:
+	cd web && npm ci --no-audit --no-fund
+	cd web && npm run test:e2e:nix

@@ -1,17 +1,74 @@
 { pkgs }:
 pkgs.buildFHSEnv {
   name = "herdr-playwright-fhs";
-  targetPkgs = pkgs: with pkgs; [
-    glib nss nspr dbus atk at-spi2-atk cups expat libdrm libxkbcommon
-    mesa libgbm libglvnd vulkan-loader pango cairo alsa-lib systemd gtk4
-    gdk-pixbuf harfbuzz harfbuzzFull graphene icu74 libxml2 libxml2_13
-    sqlite libxslt lcms2 libevent libopus libgcrypt libgpg-error flite
-    libwebp libavif libepoxy libjpeg libpng freetype fontconfig wayland
-    libmanette enchant libsecret libpsl nghttp2 woff2 hyphen libtasn1 zlib
-    libjpeg8 x264 libx11 libxcb libxcomposite libxdamage libxext libxfixes
-    libxrandr libxrender libxtst xorgserver
-    gst_all_1.gstreamer gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
-    gst_all_1.gst-plugins-bad
+  targetPkgs = pkgs: [
+    pkgs.glib
+    pkgs.nss
+    pkgs.nspr
+    pkgs.dbus
+    pkgs.atk
+    pkgs.at-spi2-atk
+    pkgs.cups
+    pkgs.expat
+    pkgs.libdrm
+    pkgs.libxkbcommon
+    pkgs.mesa
+    pkgs.libgbm
+    pkgs.libglvnd
+    pkgs.vulkan-loader
+    pkgs.pango
+    pkgs.cairo
+    pkgs.alsa-lib
+    pkgs.systemd
+    pkgs.gtk4
+    pkgs.gdk-pixbuf
+    pkgs.harfbuzz
+    pkgs.harfbuzzFull
+    pkgs.graphene
+    pkgs.icu74
+    pkgs.libxml2
+    pkgs.libxml2_13
+    pkgs.sqlite
+    pkgs.libxslt
+    pkgs.lcms2
+    pkgs.libevent
+    pkgs.libopus
+    pkgs.libgcrypt
+    pkgs.libgpg-error
+    pkgs.flite
+    pkgs.libwebp
+    pkgs.libavif
+    pkgs.libepoxy
+    pkgs.libjpeg
+    pkgs.libpng
+    pkgs.freetype
+    pkgs.fontconfig
+    pkgs.wayland
+    pkgs.libmanette
+    pkgs.enchant
+    pkgs.libsecret
+    pkgs.libpsl
+    pkgs.nghttp2
+    pkgs.woff2
+    pkgs.hyphen
+    pkgs.libtasn1
+    pkgs.zlib
+    pkgs.libjpeg8
+    pkgs.x264
+    pkgs.libx11
+    pkgs.libxcb
+    pkgs.libxcomposite
+    pkgs.libxdamage
+    pkgs.libxext
+    pkgs.libxfixes
+    pkgs.libxrandr
+    pkgs.libxrender
+    pkgs.libxtst
+    pkgs.xorgserver
+    pkgs.gst_all_1.gstreamer
+    pkgs.gst_all_1.gst-plugins-base
+    pkgs.gst_all_1.gst-plugins-good
+    pkgs.gst_all_1.gst-plugins-bad
   ];
   extraBwrapArgs = [ "--bind /tmp /tmp" ];
   runScript = "bash";

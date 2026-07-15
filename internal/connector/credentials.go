@@ -119,6 +119,44 @@ func Rotate(ctx context.Context, endpoint, keyFile, certFile, serverCA string) e
 	}
 	return writeSecret(certFile, []byte(out.CertificatePEM))
 }
+
+// EnsureCertificate migrates an enrolled certificate into its writable state
+// location. A state certificate matching the configured key is preserved. A
+// stale state certificate is replaced only when the initial certificate
+// matches that key.
+func EnsureCertificate(certFile, initialCertFile, keyFile string) error {
+	return ensureCertificate(certFile, initialCertFile, keyFile, os.Rename)
+}
+
+func ensureCertificate(certFile, initialCertFile, keyFile string, rename func(string, string) error) error {
+	if certFile == "" {
+		return errors.New("client certificate path is required")
+	}
+	keyPEM, err := os.ReadFile(keyFile)
+	if err != nil {
+		return err
+	}
+	stateCertificate, stateErr := os.ReadFile(certFile)
+	if stateErr == nil {
+		if _, err := tls.X509KeyPair(stateCertificate, keyPEM); err == nil {
+			return nil
+		}
+	} else if !errors.Is(stateErr, os.ErrNotExist) {
+		return stateErr
+	}
+	if initialCertFile == "" {
+		return errors.New("client certificate does not match the configured key and no initial certificate was configured")
+	}
+	certificate, err := os.ReadFile(initialCertFile)
+	if err != nil {
+		return err
+	}
+	if _, err := tls.X509KeyPair(certificate, keyPEM); err != nil {
+		return errors.New("initial connector certificate does not match the configured key")
+	}
+	return atomicWriteSecret(certFile, certificate, rename)
+}
+
 func CertificateExpiresSoon(path string, within time.Duration) (bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
