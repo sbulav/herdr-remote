@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Implementation record, live deployment handoff, and agent-ready development roadmap for Herdr Remote enterprise v1.">
+  <title>Herdr Remote Enterprise V1 - Implementation Record and Roadmap</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --page: #f3f0e8;
+      --surface: #fffdf7;
+      --surface-2: #e9e5d9;
+      --ink: #18201e;
+      --muted: #58615d;
+      --line: #c7c1b3;
+      --accent: #0d6757;
+      --accent-2: #174b76;
+      --ok: #17633a;
+      --warn: #8a4f00;
+      --danger: #922f2f;
+      --blocked: #6c3e83;
+      --code: #17211f;
+      --code-ink: #edf5ef;
+      --shadow: 0 12px 32px rgb(34 40 37 / 10%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #121715;
+        --surface: #19211e;
+        --surface-2: #232d29;
+        --ink: #edf2ee;
+        --muted: #b4c0b9;
+        --line: #3a4741;
+        --accent: #67d7c0;
+        --accent-2: #8bc9ff;
+        --ok: #75d69c;
+        --warn: #f1ba6a;
+        --danger: #ff9a96;
+        --blocked: #d9a5ef;
+        --code: #0c100f;
+        --code-ink: #e7f4eb;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      line-height: 1.58;
+    }
+    a { color: var(--accent-2); }
+    a:hover { text-decoration-thickness: 2px; }
+    code, pre, kbd { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    code {
+      padding: 0.12rem 0.3rem;
+      border-radius: 0.25rem;
+      background: var(--surface-2);
+      overflow-wrap: anywhere;
+    }
+    pre {
+      margin: 1rem 0;
+      padding: 1rem;
+      overflow: auto;
+      border-radius: 0.55rem;
+      background: var(--code);
+      color: var(--code-ink);
+      line-height: 1.45;
+    }
+    pre code { padding: 0; background: transparent; color: inherit; }
+    h1, h2, h3, h4 { line-height: 1.18; text-wrap: balance; }
+    h1 { max-width: 18ch; margin: 0; font-size: clamp(2.2rem, 7vw, 5.2rem); letter-spacing: -0.055em; }
+    h2 { margin-top: 0; font-size: clamp(1.65rem, 3.5vw, 2.55rem); letter-spacing: -0.025em; }
+    h3 { margin-top: 2rem; font-size: 1.35rem; }
+    h4 { margin-bottom: 0.4rem; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.055em; }
+    p, li { max-width: 82ch; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.94rem; }
+    th, td { padding: 0.72rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--surface-2); }
+    summary { cursor: pointer; font-weight: 700; }
+    details { padding: 0.8rem 1rem; border: 1px solid var(--line); border-radius: 0.55rem; background: var(--surface); }
+    details + details { margin-top: 0.75rem; }
+
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: -5rem;
+      z-index: 10;
+      padding: 0.7rem 1rem;
+      background: var(--ink);
+      color: var(--page);
+    }
+    .skip-link:focus { top: 1rem; }
+    .hero {
+      min-height: 72vh;
+      display: grid;
+      align-content: end;
+      gap: 2rem;
+      padding: clamp(2rem, 7vw, 7rem) max(1.25rem, calc((100vw - 1180px) / 2));
+      background:
+        linear-gradient(125deg, rgb(13 103 87 / 16%), transparent 52%),
+        repeating-linear-gradient(90deg, transparent 0 79px, rgb(88 97 93 / 8%) 80px),
+        var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow { margin: 0; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: 0.14em; }
+    .hero-copy { max-width: 68ch; margin: 0; font-size: clamp(1rem, 2vw, 1.25rem); color: var(--muted); }
+    .status-grid, .card-grid, .lane-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
+      gap: 1rem;
+    }
+    .status-card, .card, .lane {
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 0.65rem;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .status-card strong { display: block; margin-top: 0.25rem; font-size: 1.15rem; }
+    .status-card small, .muted { color: var(--muted); }
+    .toc {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 0.85rem max(1.25rem, calc((100vw - 1180px) / 2));
+      overflow-x: auto;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .toc a { margin-right: 1rem; color: var(--ink); font-weight: 650; text-decoration: none; }
+    .toc a:hover, .toc a:focus-visible { color: var(--accent); text-decoration: underline; }
+    main { max-width: 1180px; margin: 0 auto; padding: 1rem 1.25rem 5rem; }
+    section { padding: clamp(2.5rem, 7vw, 5rem) 0; border-bottom: 1px solid var(--line); scroll-margin-top: 4rem; }
+    section:last-child { border-bottom: 0; }
+    .lede { max-width: 70ch; color: var(--muted); font-size: 1.08rem; }
+    .callout {
+      margin: 1.25rem 0;
+      padding: 1rem 1.2rem;
+      border-left: 0.35rem solid var(--accent);
+      background: var(--surface);
+    }
+    .callout.warning { border-left-color: var(--warn); }
+    .callout.danger { border-left-color: var(--danger); }
+    .callout p:first-child { margin-top: 0; }
+    .callout p:last-child { margin-bottom: 0; }
+    .badge {
+      display: inline-block;
+      padding: 0.18rem 0.5rem;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.045em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .done { color: var(--ok); }
+    .ready { color: var(--accent-2); }
+    .blocked { color: var(--blocked); }
+    .manual { color: var(--warn); }
+    .optional { color: var(--muted); }
+    .table-wrap { overflow-x: auto; }
+    .timeline { display: grid; gap: 1rem; }
+    .timeline article { padding-left: 1rem; border-left: 0.3rem solid var(--line); }
+    .timeline article[data-state="done"] { border-left-color: var(--ok); }
+    .timeline h3 { margin: 0 0 0.35rem; }
+    .diagram { white-space: pre; }
+    .task {
+      margin-top: 1.5rem;
+      padding: clamp(1rem, 3vw, 1.5rem);
+      border: 1px solid var(--line);
+      border-radius: 0.75rem;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      scroll-margin-top: 5rem;
+    }
+    .task header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.55rem 0.8rem; }
+    .task h3 { margin: 0; }
+    .task-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem; margin: 1rem 0; }
+    .task-meta div { padding: 0.65rem; background: var(--surface-2); border-radius: 0.4rem; }
+    .task-meta .meta-label { display: block; color: var(--muted); font-size: 0.76rem; font-weight: 800; text-transform: uppercase; }
+    .task-meta .meta-value { display: block; margin-top: 0.2rem; }
+    .task-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 1.25rem; }
+    .checklist { padding-left: 1.3rem; }
+    .checklist li { margin: 0.35rem 0; }
+    .path-list code { word-break: break-all; }
+    footer { padding: 2.5rem 1.25rem; text-align: center; color: var(--muted); border-top: 1px solid var(--line); }
+
+    @media (max-width: 700px) {
+      .hero { min-height: auto; padding-top: 4rem; }
+      .task header { display: block; }
+      .task header .badge { margin-top: 0.5rem; }
+      th, td { min-width: 9rem; }
+    }
+
+    @media print {
+      :root { color-scheme: light; --page: white; --surface: white; --surface-2: #eee; --ink: black; --muted: #444; --line: #aaa; }
+      .toc { position: static; white-space: normal; }
+      .hero { min-height: auto; padding: 2rem 0; }
+      main { max-width: none; }
+      section, .task { break-inside: avoid; }
+      a { color: black; text-decoration: none; }
+      a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to roadmap</a>
+
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Enterprise V1 Handoff</p>
+      <h1>Herdr Remote implementation record and roadmap</h1>
+    </div>
+    <p class="hero-copy">
+      A self-contained record of what was built, why it was built, what is live now, what remains unsafe or unverified, and how independent agents should implement the next work packages.
+    </p>
+    <div class="status-grid" aria-label="Current project status">
+      <div class="status-card"><small>Document snapshot</small><strong>2026-07-16</strong></div>
+      <div class="status-card"><small>POC status</small><strong class="done">Live and read-only</strong></div>
+      <div class="status-card"><small>Public origin</small><strong><a href="https://herdr.sbulav.ru">herdr.sbulav.ru</a></strong></div>
+      <div class="status-card"><small>Connected hosts</small><strong>1: mz</strong></div>
+      <div class="status-card"><small>Observed agents</small><strong>2 after live fix</strong></div>
+      <div class="status-card"><small>Next release gate</small><strong class="manual">Checked-write acceptance</strong></div>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Roadmap sections">
+    <a href="#start">Start here</a>
+    <a href="#context">Context</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#delivered">Delivered</a>
+    <a href="#deployment">Deployment</a>
+    <a href="#security">Security</a>
+    <a href="#verification">Verification</a>
+    <a href="#incidents">Incidents</a>
+    <a href="#gaps">Known gaps</a>
+    <a href="#plan">Roadmap</a>
+    <a href="#tasks">Work packages</a>
+    <a href="#rules">Agent rules</a>
+    <a href="#reference">Reference</a>
+  </nav>
+
+  <main id="main-content">
+    <section id="start">
+      <h2>Start Here</h2>
+      <p class="lede">
+        This file is the primary handoff for the enterprise POC. Read this section, the known gaps, and the selected work package before changing code or infrastructure.
+      </p>
+
+      <div class="callout warning">
+        <p><strong>Current safety state:</strong> monitoring and bounded output work, but remote writes are disabled. Do not bypass the version, capability, schema, revision, content-hash, generation, or epoch checks.</p>
+      </div>
+
+      <h3>How an agent should claim work</h3>
+      <ol>
+        <li>Select one work package whose status is <span class="badge ready">Ready</span> and whose dependencies are complete.</li>
+        <li>Create or claim a tracker issue named with the task ID, for example <code>SAFE-001: identify the checked Herdr build</code>.</li>
+        <li>Read the listed source documents and files. Do not infer protocol behavior from UI code.</li>
+        <li>Inspect all affected worktrees before editing. Preserve unrelated changes, especially <code>/home/sab/dotnix/result</code>.</li>
+        <li>Implement only the stated scope. If a prerequisite is false, stop and append evidence to the tracker instead of expanding scope silently.</li>
+        <li>Run every required check listed in the package and record exact commands and results.</li>
+        <li>Commit with Conventional Commits and push only to the user's forks. Do not create an upstream PR.</li>
+        <li>Leave an append-only handoff with commits, deployment state, test evidence, risks, and the next unblocked task.</li>
+      </ol>
+
+      <h3>Repository authority</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Purpose</th><th>Checkout</th><th>Branch</th><th>Current commit</th><th>Remote</th></tr></thead>
+          <tbody>
+            <tr><td>Control plane, connector, protocols, PWA, Nix modules</td><td><code>/home/sab/git_priv/herdr-remote</code></td><td><code>enterprise-v1</code></td><td><code>6664e6d</code></td><td><code>sbulav/herdr-remote</code></td></tr>
+            <tr><td>Checked atomic input fork</td><td><code>/tmp/opencode/herdr-v0.7.3</code></td><td><code>checked-input-v1</code></td><td><code>f1df299</code></td><td><code>sbulav/herdr</code></td></tr>
+            <tr><td>Live NixOS and Home Manager deployment</td><td><code>/home/sab/dotnix</code></td><td><code>feat-herdr-enterprise</code></td><td><code>c15aeb6</code></td><td><code>sbulav/dotnix</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">The first two worktrees were clean when this document was written. Dotnix contained only the unrelated untracked <code>result</code> symlink and must remain untouched.</p>
+    </section>
+
+    <section id="context">
+      <h2>Product Context and Rationale</h2>
+      <p class="lede">
+        The goal is a secure, self-hosted way for one operator to monitor and eventually control Herdr-managed AI agents from desktop and mobile browsers. The deployment targets at most ten hosts and tens of active agents.
+      </p>
+
+      <h3>Why the old design was replaced</h3>
+      <p>
+        The repository previously centered on a Python relay, SSH or inbound host polling, Telegram integration, native clients, shared URL tokens, and host lifecycle controls. Those paths increased credential exposure, platform maintenance, replay ambiguity, and routing complexity. They also did not provide the exact state preconditions required for safe remote writes.
+      </p>
+      <p>
+        Enterprise v1 replaces that design with a central Go control plane, outbound-only Go connectors, a same-origin TypeScript PWA, strict JSON contracts, OIDC authentication, mTLS host identity, and metadata-only durable storage.
+      </p>
+
+      <h3>Confirmed product boundaries</h3>
+      <div class="card-grid">
+        <article class="card">
+          <h4>In Scope</h4>
+          <ul>
+            <li>One MFA-authenticated operator.</li>
+            <li>Responsive installable PWA.</li>
+            <li>Agent status, bounded output, transient prompts, text, safe keys, and interrupt.</li>
+            <li>Outbound-only connectors with mTLS.</li>
+            <li>Durable metadata-only audit and no replay.</li>
+            <li>Web Push as a wake-up hint, never state authority.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h4>Intentionally Out of Scope</h4>
+          <ul>
+            <li>Telegram, native macOS, native iOS, and current macOS connector work.</li>
+            <li>SSH polling, UDP transport, inbound host listeners, and shared URL tokens.</li>
+            <li>Agent launch or termination, arbitrary shell execution, host power, and session lifecycle.</li>
+            <li>Multi-user RBAC, multitenancy, managed SaaS, and high availability.</li>
+            <li>Terminal transcript or prompt persistence.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h4>POC Success Definition</h4>
+          <ul>
+            <li>The operator signs in through Authelia MFA.</li>
+            <li>Linux hosts appear without opening inbound ports.</li>
+            <li>Desktop and Android PWA show current agents and bounded output.</li>
+            <li>Checked writes reject stale state and are never replayed.</li>
+            <li>Operations can back up, restore, rotate, revoke, monitor, and roll back.</li>
+          </ul>
+        </article>
+      </div>
+
+      <h3>Investigation record</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Issue</th><th>Question</th><th>Decision</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><a href="https://github.com/sbulav/herdr-remote/issues/1">#1</a></td><td>Reuse a client or rebuild?</td><td>Build a React, Vite, and TypeScript PWA with runtime schema validation and Web Push.</td><td><span class="badge done">Closed</span></td></tr>
+            <tr><td><a href="https://github.com/sbulav/herdr-remote/issues/2">#2</a></td><td>How should the NixOS production service work?</td><td>Export reproducible packages and hardened NixOS/Home Manager modules; deploy on <code>zanoza</code> behind Authelia and Traefik.</td><td><span class="badge done">Closed</span></td></tr>
+            <tr><td><a href="https://github.com/sbulav/herdr-remote/issues/3">#3</a></td><td>How can hosts connect and writes fail closed?</td><td>Use outbound WSS with mTLS, strict state epochs and revisions, checked atomic Herdr input, bounded queues, durable deduplication, and no replay.</td><td><span class="badge done">Closed</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>Implemented Architecture</h2>
+      <pre class="diagram" aria-label="Herdr Remote deployment architecture"><code>Android PWA or desktop browser
+  | HTTPS, secure opaque cookie, exact Origin
+  v
+Authelia MFA + Traefik
+  | strips and replaces four trusted identity headers
+  v
+Herdr control plane on zanoza
+  | browser listener: 127.0.0.1:8080
+  | connector listener: :8443, TLS + required client certificate
+  | SQLite: metadata only
+  v
+Outbound connector on mz
+  | WSS mTLS to herdr.sbulav.ru:8443
+  | no inbound listener
+  v
+/home/sab/.config/herdr/herdr.sock
+  | local NDJSON API, same OS user
+  v
+Herdr runtime and agent PTYs</code></pre>
+
+      <h3>Technology choices</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>Choice</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr><td>Control plane and connector</td><td>Go 1.24+</td><td>Static deployment, bounded concurrency, shared protocol validation, straightforward Nix packaging, and maintained WebSocket support.</td></tr>
+            <tr><td>Durable state</td><td>SQLite via <code>modernc.org/sqlite</code></td><td>Single-node deployment, transactional audit/deduplication, no CGO, and simple backup.</td></tr>
+            <tr><td>Browser client</td><td>React 19, TypeScript, Vite, Workbox</td><td>Strict discriminated protocol handling, responsive UI, installability, service-worker push, and broad browser testing.</td></tr>
+            <tr><td>Host integration</td><td>Herdr NDJSON Unix socket</td><td>No shell invocation, no SSH polling, same-user least privilege, bounded local calls.</td></tr>
+            <tr><td>Identity</td><td>Authelia/OIDC headers plus application opaque session</td><td>MFA at the proxy, no browser-readable credentials, explicit issuer/audience/subject/assurance matching.</td></tr>
+            <tr><td>Connector identity</td><td>Private CA and mTLS certificate</td><td>Host-scoped authentication, rotation, revocation, and no shared secret in a URL.</td></tr>
+            <tr><td>Packaging</td><td>Nix flakes, NixOS modules, Home Manager module</td><td>Reproducible binaries and declarative deployment on <code>zanoza</code> and <code>mz</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>State and action model</h3>
+      <ul>
+        <li>The global agent identity is <code>(host_id, instance_id, terminal_id)</code>. Mutable pane, tab, and workspace IDs are never global routing keys.</li>
+        <li>A connector reconciliation creates a <code>connector_epoch</code>; a browser projection creates a separate <code>state_epoch</code>.</li>
+        <li>Every write binds to connector epoch, agent generation, nonzero Herdr input revision, agent label, allowed status, and, for prompts, content hash and prompt fingerprint.</li>
+        <li>The control plane stores the action ID before dispatch. Duplicate IDs never dispatch, including after restart or retention cleanup.</li>
+        <li>The connector sends <code>action.received</code> only after final validation and before execution.</li>
+        <li>A write with uncertain side effects becomes <code>unknown/OUTCOME_UNKNOWN</code>. It is never replayed automatically.</li>
+        <li>Reconnects create fresh epochs and full snapshots. Neither peer repairs gaps by replaying old state or writes.</li>
+      </ul>
+    </section>
+
+    <section id="delivered">
+      <h2>What Has Been Delivered</h2>
+      <p class="lede">The legacy relay was not incrementally extended. Enterprise v1 is a replacement architecture on the <code>enterprise-v1</code> branch.</p>
+
+      <div class="timeline">
+        <article data-state="done">
+          <h3>1. Protocol contracts</h3>
+          <p>Defined strict browser, HTTP, and connector v1 contracts with JSON Schema, direction checks, bounds, UUIDv7 identities, capability negotiation, state inventory, snapshots, deltas, resync, receipts, outcomes, and conformance fixtures.</p>
+          <p><code>6c9160d</code>, <code>9058f12</code>, <code>cef1989</code></p>
+        </article>
+        <article data-state="done">
+          <h3>2. Go control plane and connector</h3>
+          <p>Implemented separate listeners, mTLS enrollment and rotation, trusted OIDC boundary, opaque sessions, CSRF, exact Origin, WebSocket revocation, bounded host leases, SQLite migrations, audit, deduplication, crash recovery, prompt extraction, output polling, action gating, and Web Push.</p>
+          <p><code>c5723f7</code></p>
+        </article>
+        <article data-state="done">
+          <h3>3. Responsive PWA</h3>
+          <p>Implemented runtime frame validation, safe reducers, reconnect/resync, unresolved action handling, agent list/detail views, transient bounded output, prompt controls, notification management, service-worker synchronization, and phone/tablet accessibility coverage.</p>
+          <p><code>074dc42</code>, <code>0760ea3</code></p>
+        </article>
+        <article data-state="done">
+          <h3>4. Checked Herdr fork</h3>
+          <p>Added atomic checked read/send methods, input revisions, detection content hashing, exact identity and status validation, schema advertisement, docs, and tests in the user's Herdr fork.</p>
+          <p><code>sbulav/herdr</code> branch <code>checked-input-v1</code>, commit <code>f1df299</code>. Upstream PR <code>ogulcancelik/herdr#1456</code> was closed intentionally; no upstream PR remains.</p>
+        </article>
+        <article data-state="done">
+          <h3>5. Reproducible Nix outputs</h3>
+          <p>Added <code>herdr-controlplane</code>, <code>herdr-connector</code>, and <code>herdr-pwa</code> packages, NixOS modules for both daemons, a Home Manager connector module, examples, module evaluation checks, and operations documentation.</p>
+          <p><code>4f6eef9</code></p>
+        </article>
+        <article data-state="done">
+          <h3>6. Legacy removal</h3>
+          <p>Removed the Python relay, Telegram path, macOS/iOS clients, demo worker, stale Wrangler caches, direct polling assumptions, native deployment paths, and obsolete power/session controls from the enterprise branch.</p>
+        </article>
+        <article data-state="done">
+          <h3>7. Live control-plane deployment</h3>
+          <p>Added SOPS-backed secrets, hardened service configuration, Traefik/Authelia routing, firewall port 8443, VAPID, and deploy-rs rollout on <code>zanoza</code>.</p>
+          <p><code>12a2da7</code>, <code>215ec10</code></p>
+        </article>
+        <article data-state="done">
+          <h3>8. Live mz connector enrollment</h3>
+          <p>Created a one-time enrollment, generated the private key locally, stored certificate material in SOPS, activated the Home Manager user service, and securely removed plaintext staging files.</p>
+          <p>Host UUID <code>019f69b6-b44c-7c97-9fb0-702205c63190</code>, commit <code>af0eadb</code>.</p>
+        </article>
+        <article data-state="done">
+          <h3>9. Live agent-discovery repair</h3>
+          <p>Diagnosed a connected host with zero instances. The connector requested unsupported event <code>pane.agent_exited</code>; Herdr 0.7.3 accepts <code>pane.exited</code>. Fixed the event, added a regression assertion, published the connector, updated dotnix, and reactivated <code>mz</code>.</p>
+          <p><code>8f162e5</code>, deployed by <code>987926f</code>.</p>
+        </article>
+        <article data-state="done">
+          <h3>10. Browser snapshot contract repair</h3>
+          <p>Reproduced the user's permanent connecting state against the live first WebSocket frame and the PWA's production validator. Separated browser instance records from connector snapshots so connector-only <code>sequence</code> cannot cross the browser boundary, then normalized empty hosts, instances, capabilities, and agents to JSON arrays rather than <code>null</code>.</p>
+          <p><code>d0c8727</code>, <code>6664e6d</code>, deployed by <code>4e2f14a</code> and <code>c15aeb6</code>.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="deployment">
+      <h2>Live Deployment State</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Component</th><th>Location</th><th>Current state</th><th>Authority</th></tr></thead>
+          <tbody>
+            <tr><td>Public PWA</td><td><code>https://herdr.sbulav.ru</code></td><td>Unauthenticated requests return <code>302</code> to Authelia; authenticated HTML previously verified as <code>200</code>.</td><td>Traefik route plus Authelia <code>auth-chain</code>.</td></tr>
+            <tr><td>Control plane</td><td><code>zanoza</code>, <code>127.0.0.1:8080</code></td><td><code>herdr-controlplane.service</code> active; health and readiness return <code>{"status":"ok"}</code>.</td><td>NixOS module and SOPS credentials.</td></tr>
+            <tr><td>Connector endpoint</td><td><code>herdr.sbulav.ru:8443</code></td><td>Listening with TLS and required connector client certificate.</td><td>Control-plane connector listener.</td></tr>
+            <tr><td>mz connector</td><td>User service on <code>mz</code></td><td>Active since 2026-07-16 10:17:20 MSK after event fix.</td><td>Home Manager module and SOPS credentials.</td></tr>
+            <tr><td>Herdr socket</td><td><code>/home/sab/.config/herdr/herdr.sock</code></td><td>Mode <code>0600</code>; live probe returned two agents.</td><td>Manually launched Herdr runtime.</td></tr>
+            <tr><td>Observed projection</td><td><code>mz/default</code></td><td>One online instance; <code>opencode</code> working and <code>claude</code> idle at verification time.</td><td>Authenticated browser snapshot probe.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Live identity values</h3>
+      <ul>
+        <li>Issuer: <code>https://authelia.sbulav.ru</code></li>
+        <li>Audience: <code>herdr-remote</code></li>
+        <li>Subject: <code>sab</code></li>
+        <li>Assurance: <code>two_factor</code></li>
+        <li>Connector URL: <code>wss://herdr.sbulav.ru:8443/v1/connectors/ws</code></li>
+        <li>Rotation URL: <code>https://herdr.sbulav.ru:8443/v1/connectors/rotate</code></li>
+      </ul>
+
+      <h3>Secret locations</h3>
+      <p>Do not print, decrypt for documentation, commit plaintext, or copy private material into the Nix store.</p>
+      <ul class="path-list">
+        <li>Control-plane SOPS file: <code>/home/sab/dotnix/secrets/zanoza/herdr-remote.yaml</code></li>
+        <li>mz connector SOPS file: <code>/home/sab/dotnix/secrets/sab/herdr-mz.yaml</code></li>
+        <li>Control-plane SQLite: <code>/var/lib/herdr-controlplane/control.db</code> on <code>zanoza</code></li>
+        <li>Connector mutable certificate: <code>$XDG_STATE_HOME/herdr-connector/client.crt</code> on <code>mz</code></li>
+      </ul>
+
+      <h3>Android PWA usage</h3>
+      <ol>
+        <li>Open <code>https://herdr.sbulav.ru</code> in Chrome on Android.</li>
+        <li>Complete Authelia two-factor authentication.</li>
+        <li>Use Chrome's menu and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+        <li>Launch <strong>Herdr Remote</strong> from the home-screen icon.</li>
+        <li>Select an agent for live status and bounded output.</li>
+        <li>Select <strong>Enable notifications</strong>, approve Android permission, and use <strong>Send test</strong>.</li>
+      </ol>
+    </section>
+
+    <section id="security">
+      <h2>Security and Data Invariants</h2>
+      <p class="lede">These are implementation constraints, not suggestions. A change that weakens one requires an explicit protocol and threat-model review.</p>
+
+      <div class="card-grid">
+        <article class="card">
+          <h4>Browser Boundary</h4>
+          <ul>
+            <li>Browser listener stays on loopback.</li>
+            <li>Proxy strips and replaces all four identity headers.</li>
+            <li>Opaque cookie is secure, HTTP-only, and same-site.</li>
+            <li>WebSocket upgrades require exact Origin.</li>
+            <li>State-changing HTTP requires Origin, opaque session, and CSRF.</li>
+            <li>Logout revokes every socket for the application session.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h4>Connector Boundary</h4>
+          <ul>
+            <li>Connector exposes no listener.</li>
+            <li>Every connection uses WSS and verified mTLS.</li>
+            <li>Host identity comes from the certificate mapping.</li>
+            <li>Only one live connector lease owns a host.</li>
+            <li>Private keys are generated and retained on the connector host.</li>
+            <li>Certificate rotation and revocation are application-enforced.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h4>Content Boundary</h4>
+          <ul>
+            <li>Prompt excerpts, output, text, and keys are transient.</li>
+            <li>Audit rows contain identifiers, operation type, times, outcome, and stable code only.</li>
+            <li>Push payloads carry a random event ID and coarse event kind only.</li>
+            <li>Logs, metrics, backups, URLs, and errors must not contain terminal content or credentials.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h4>Write Boundary</h4>
+          <ul>
+            <li>Revision <code>0</code> is read-only.</li>
+            <li><code>checked_input.v1</code> requires exact inspected Herdr schema.</li>
+            <li>Original Herdr <code>0.7.3</code> is always read-only.</li>
+            <li>Stale epoch, generation, identity, status, revision, or prompt data rejects before enqueue.</li>
+            <li>Unknown writes are never replayed.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="verification">
+      <h2>Verification Record</h2>
+      <p class="lede">The integrated release gate passed before deployment. The later event-name fix reran focused connector, Herdr client, control-plane tests, and <code>go vet ./...</code>, then passed the live snapshot probe.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Recorded result</th><th>Primary command</th></tr></thead>
+          <tbody>
+            <tr><td>Go formatting, vet, build, unit, race</td><td>Passed</td><td><code>make check</code></td></tr>
+            <tr><td>Browser/connector/HTTP contracts</td><td>36 Python tests passed</td><td><code>python3 -m unittest discover -s tests -p 'test_*.py'</code></td></tr>
+            <tr><td>PWA unit tests</td><td>86 tests passed</td><td><code>cd web &amp;&amp; npm test</code></td></tr>
+            <tr><td>PWA browser tests</td><td>40 Chromium/WebKit tests passed</td><td><code>make e2e-nix</code></td></tr>
+            <tr><td>Nix flake checks</td><td>All 11 native checks passed</td><td><code>nix flake check</code></td></tr>
+            <tr><td>NixOS and Home Manager evaluation</td><td>Passed</td><td><code>nix flake check</code></td></tr>
+            <tr><td>Package builds</td><td>Control plane, connector, PWA passed</td><td><code>nix build .#herdr-controlplane .#herdr-connector .#herdr-pwa</code></td></tr>
+            <tr><td>Live public auth</td><td><code>302</code> to Authelia without session</td><td><code>curl -I https://herdr.sbulav.ru</code></td></tr>
+            <tr><td>Live local health</td><td>Control plane active; health and readiness OK</td><td><code>ssh zanoza 'curl --fail http://127.0.0.1:8080/readyz'</code></td></tr>
+            <tr><td>Live agent projection</td><td>1 host, 1 instance, 2 agents after fix</td><td>Temporary authenticated snapshot probe; removed after diagnosis</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <p><strong>Herdr fork test limitation:</strong> targeted checked-input, schema, build, clippy, and maintenance tests passed. The full upstream suite is environment-limited on NixOS by hardcoded FHS commands such as <code>/bin/bash</code>, <code>/usr/bin/true</code>, and <code>/bin/cat</code>. Do not report those environment failures as checked-input regressions without reproducing them in a supported FHS runner.</p>
+      </div>
+    </section>
+
+    <section id="incidents">
+      <h2>Deployment and POC Incidents</h2>
+      <p class="lede">These failures are part of the implementation record. Preserve them in tests and runbooks so later agents do not repeat the diagnosis.</p>
+
+      <details open>
+        <summary>Systemd rejected an encoded logout URL</summary>
+        <p><strong>Symptom:</strong> service deployment failed with <code>Failed to resolve unit specifiers ... Invalid slot</code> because systemd interpreted <code>%3A</code> in the encoded URL.</p>
+        <p><strong>Resolution:</strong> changed the Nix module/service argument handling so the configured URL reaches the process without systemd specifier expansion. Commit <code>215ec10</code>.</p>
+      </details>
+      <details open>
+        <summary>Connector started before Home Manager SOPS materialized the key</summary>
+        <p><strong>Symptom:</strong> first start failed with <code>open /home/sab/.config/sops-nix/secrets/herdr_connector_client_key: no such file or directory</code>.</p>
+        <p><strong>Resolution:</strong> systemd restarted the connector after SOPS materialization. The user service is now stable. Future deployment tests should explicitly order and verify secret availability.</p>
+      </details>
+      <details open>
+        <summary>Host connected but no instances or agents appeared</summary>
+        <p><strong>Symptom:</strong> authenticated live snapshot showed <code>hosts: 1</code>, <code>instances: 0</code>, <code>agents: 0</code> while Herdr itself reported two agents.</p>
+        <p><strong>Root cause:</strong> connector reconciliation subscribed to <code>pane.agent_exited</code>, which Herdr rejected. The supported event is <code>pane.exited</code>. Reconciliation stopped before the first instance snapshot while the mTLS host lease stayed connected.</p>
+        <p><strong>Resolution:</strong> event corrected, subscription regression added, package repinned, and <code>mz</code> reactivated. Live probe then showed one instance and two agents. Commits <code>8f162e5</code> and <code>987926f</code>.</p>
+      </details>
+      <details open>
+        <summary>PWA stayed on connecting and waiting for current state</summary>
+        <p><strong>Symptom:</strong> the authenticated PWA displayed <code>Connecting to the control plane...</code> and <code>Waiting for current state...</code> even though a direct WebSocket probe received a snapshot.</p>
+        <p><strong>First cause:</strong> browser instances reused the connector snapshot Go type and leaked connector-only <code>sequence: 0</code>. The strict PWA schema rejected that additional property and closed the socket.</p>
+        <p><strong>Second cause:</strong> after the first correction, recovered hosts and zero-agent instances serialized empty collections as <code>null</code>. The browser schema requires arrays, so a fresh post-restart snapshot could still be rejected before the connector reacquired its lease.</p>
+        <p><strong>Resolution:</strong> added a dedicated browser instance type, asserted the exact serialized browser field set, normalized every browser collection to <code>[]</code>, and validated the live frame with the production PWA validator both before and after <code>mz</code> reconnected. Commits <code>d0c8727</code>, <code>6664e6d</code>, <code>4e2f14a</code>, and <code>c15aeb6</code>.</p>
+      </details>
+      <details open>
+        <summary>Documented deploy app did not exist</summary>
+        <p><strong>Symptom:</strong> <code>nix run .#deploy.zanoza</code> failed because dotnix exports no such app.</p>
+        <p><strong>Working command:</strong> <code>nix run github:serokell/deploy-rs -- .#zanoza</code>.</p>
+      </details>
+    </section>
+
+    <section id="gaps">
+      <h2>Known Gaps and Risks</h2>
+      <div class="callout danger">
+        <p><strong>Highest-priority gap:</strong> the checked Herdr fork still reports package version <code>0.7.3</code>. Herdr Remote deliberately treats exact <code>0.7.3</code> as incapable of checked writes, even if a capability is advertised. A restarted fork would therefore remain read-only until it identifies itself as a distinct build and passes schema validation.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Gap</th><th>Impact</th><th>Disposition</th></tr></thead>
+          <tbody>
+            <tr><td>Checked fork version collision</td><td>Blocks all safe remote writes.</td><td><a href="#SAFE-001">SAFE-001</a>, then <a href="#SAFE-002">SAFE-002</a>.</td></tr>
+            <tr><td>Running Herdr process predates package activation</td><td>Current ping reports only <code>live_handoff</code> and <code>detached_server_daemon</code>.</td><td>Coordinate restart after SAFE-001; restarting Herdr can disrupt live agents.</td></tr>
+            <tr><td>Post-fix operator browser confirmation is not recorded</td><td>The exact live frame passes the production PWA validator with one host, one instance, and two agents, but final visual acceptance remains manual.</td><td><a href="#ACCEPT-001">ACCEPT-001</a>.</td></tr>
+            <tr><td>Android install and push not tested on a physical phone</td><td>Installability and background notification reliability remain assumptions.</td><td><a href="#MOBILE-001">MOBILE-001</a>.</td></tr>
+            <tr><td>Only <code>mz</code> is enrolled</td><td>No multi-host POC evidence.</td><td><a href="#HOST-001">HOST-001</a> and later <a href="#HOST-002">HOST-002</a>.</td></tr>
+            <tr><td>No completed backup/restore drill</td><td>SQLite, CA, and connector state recovery are unproven.</td><td><a href="#OPS-001">OPS-001</a>.</td></tr>
+            <tr><td>No production alerts or dashboard</td><td>Failures depend on manual discovery.</td><td><a href="#OPS-002">OPS-002</a>.</td></tr>
+            <tr><td>No rotation/revocation/re-enrollment drill</td><td>Credential lifecycle is implemented but operationally unproven.</td><td><a href="#CERT-001">CERT-001</a>.</td></tr>
+            <tr><td>Docs contain stale CSRF and rollout instructions</td><td>An agent may request CSRF from the wrong endpoint or assume <code>mz</code> is unenrolled.</td><td><a href="#DOC-001">DOC-001</a>.</td></tr>
+            <tr><td>Fake connector tests accepted invalid Herdr event names</td><td>The live zero-agent bug passed unit and integration gates.</td><td><a href="#TEST-001">TEST-001</a>.</td></tr>
+            <tr><td>Branches are not released or merged into fork main branches</td><td>Deployment follows mutable feature branches.</td><td><a href="#REL-001">REL-001</a> after acceptance.</td></tr>
+            <tr><td>Server/client CA role separation needs explicit verification</td><td>A shared trust root would increase blast radius.</td><td>Verify and, if needed, split in <a href="#CERT-001">CERT-001</a>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="plan">
+      <h2>Development Plan</h2>
+      <p class="lede">Work is organized as independent lanes. Agents may run ready tasks in parallel only when their file ownership does not overlap.</p>
+
+      <div class="lane-grid">
+        <article class="lane">
+          <h3>Lane A: Write Safety</h3>
+          <p><a href="#SAFE-001">SAFE-001</a> -&gt; <a href="#SAFE-002">SAFE-002</a></p>
+          <p>Make the fork unambiguously identifiable, then prove checked writes and stale rejection on a disposable agent.</p>
+        </article>
+        <article class="lane">
+          <h3>Lane B: User Acceptance</h3>
+          <p><a href="#ACCEPT-001">ACCEPT-001</a> and <a href="#MOBILE-001">MOBILE-001</a></p>
+          <p>Validate the desktop and Android PWA independently of write enablement.</p>
+        </article>
+        <article class="lane">
+          <h3>Lane C: Operations</h3>
+          <p><a href="#OPS-001">OPS-001</a> and <a href="#OPS-002">OPS-002</a> -&gt; <a href="#CERT-001">CERT-001</a></p>
+          <p>Prove recovery and observability before credential lifecycle drills.</p>
+        </article>
+        <article class="lane">
+          <h3>Lane D: Contracts and Docs</h3>
+          <p><a href="#DOC-001">DOC-001</a> and <a href="#TEST-001">TEST-001</a> and <a href="#TEST-002">TEST-002</a></p>
+          <p>Correct the handbooks and add a seam that catches local Herdr compatibility errors.</p>
+        </article>
+        <article class="lane">
+          <h3>Lane E: Host Expansion</h3>
+          <p><a href="#HOST-001">HOST-001</a> -&gt; <a href="#HOST-002">HOST-002</a></p>
+          <p>Enroll <code>zanoza</code> first, then add only Linux hosts that actually run Herdr.</p>
+        </article>
+        <article class="lane">
+          <h3>Lane F: Release Decision</h3>
+          <p><a href="#DECIDE-001">DECIDE-001</a> -&gt; <a href="#REL-001">REL-001</a></p>
+          <p>Do not normalize feature branches into releases before the operator accepts the POC.</p>
+        </article>
+      </div>
+
+      <h3>Dependency graph</h3>
+      <pre class="diagram"><code>SAFE-001 --&gt; SAFE-002 -----------+
+ACCEPT-001 ----------------------+--&gt; DECIDE-001 --&gt; REL-001
+MOBILE-001 ----------------------+
+OPS-001 ----+--&gt; CERT-001 -------+
+OPS-002 ----+
+
+DOC-001       (independent, ready now)
+TEST-001      (independent, ready now; informs SAFE-001)
+TEST-002      (independent design; final cases use SAFE-002)
+HOST-001 --&gt; HOST-002            (defer activation until baseline is stable)
+UX-001        (created only from acceptance findings)
+ANDROID-001   (optional investigation only if PWA evidence is inadequate)</code></pre>
+
+      <h3>Task index</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Priority</th><th>Status</th><th>Primary owner area</th><th>Dependencies</th></tr></thead>
+          <tbody>
+            <tr><td><a href="#SAFE-001">SAFE-001</a></td><td>P0</td><td><span class="badge ready">Ready</span></td><td>Herdr fork + protocol integration</td><td>None</td></tr>
+            <tr><td><a href="#ACCEPT-001">ACCEPT-001</a></td><td>P0</td><td><span class="badge manual">Manual</span></td><td>Desktop acceptance</td><td>Live deployment</td></tr>
+            <tr><td><a href="#MOBILE-001">MOBILE-001</a></td><td>P0</td><td><span class="badge manual">Manual</span></td><td>Android PWA and Push</td><td>Live deployment</td></tr>
+            <tr><td><a href="#DOC-001">DOC-001</a></td><td>P1</td><td><span class="badge ready">Ready</span></td><td>Documentation</td><td>None</td></tr>
+            <tr><td><a href="#SAFE-002">SAFE-002</a></td><td>P0</td><td><span class="badge blocked">Blocked</span></td><td>End-to-end checked writes</td><td>SAFE-001, ACCEPT-001</td></tr>
+            <tr><td><a href="#OPS-001">OPS-001</a></td><td>P1</td><td><span class="badge ready">Ready</span></td><td>Backup and restore</td><td>None</td></tr>
+            <tr><td><a href="#OPS-002">OPS-002</a></td><td>P1</td><td><span class="badge ready">Ready</span></td><td>Monitoring and alerts</td><td>None</td></tr>
+            <tr><td><a href="#CERT-001">CERT-001</a></td><td>P1</td><td><span class="badge blocked">Blocked</span></td><td>Credential lifecycle</td><td>OPS-001, OPS-002</td></tr>
+            <tr><td><a href="#HOST-001">HOST-001</a></td><td>P1</td><td><span class="badge ready">Ready</span></td><td>zanoza connector</td><td>Operator scheduling</td></tr>
+            <tr><td><a href="#HOST-002">HOST-002</a></td><td>P2</td><td><span class="badge blocked">Blocked</span></td><td>Additional Linux hosts</td><td>HOST-001</td></tr>
+            <tr><td><a href="#TEST-001">TEST-001</a></td><td>P1</td><td><span class="badge ready">Ready</span></td><td>Herdr compatibility tests</td><td>None</td></tr>
+            <tr><td><a href="#TEST-002">TEST-002</a></td><td>P1</td><td><span class="badge ready">Ready</span></td><td>Recovery and no-replay tests</td><td>None for read cases</td></tr>
+            <tr><td><a href="#UX-001">UX-001</a></td><td>P2</td><td><span class="badge blocked">Blocked</span></td><td>PWA refinements</td><td>Acceptance findings</td></tr>
+            <tr><td><a href="#DECIDE-001">DECIDE-001</a></td><td>P0</td><td><span class="badge blocked">Blocked</span></td><td>Operator decision</td><td>POC acceptance evidence</td></tr>
+            <tr><td><a href="#REL-001">REL-001</a></td><td>P2</td><td><span class="badge blocked">Blocked</span></td><td>Release and immutable pins</td><td>DECIDE-001 go decision</td></tr>
+            <tr><td><a href="#ANDROID-001">ANDROID-001</a></td><td>P3</td><td><span class="badge optional">Optional</span></td><td>Native Android investigation</td><td>MOBILE-001 evidence</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tasks">
+      <h2>Agent-Ready Work Packages</h2>
+
+      <article class="task" id="SAFE-001" data-task-id="SAFE-001" data-status="ready" data-dependencies="none">
+        <header><h3>SAFE-001: Give the checked Herdr fork a distinct identity</h3><span class="badge ready">Ready</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P0, release blocker</span></div>
+          <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>sbulav/herdr</code></span></div>
+          <div><span class="meta-label">Secondary repos</span><span class="meta-value"><code>herdr-remote</code>, <code>dotnix</code></span></div>
+          <div><span class="meta-label">Conflict risk</span><span class="meta-value">High: lockfiles and live Herdr restart</span></div>
+        </div>
+        <p><strong>Objective:</strong> make the patched build report a version distinct from original upstream <code>0.7.3</code>, then prove capability and schema detection without weakening the exact <code>0.7.3</code> read-only rule.</p>
+        <p><strong>Reason:</strong> the fork implements checked input but its <code>Cargo.toml</code> still says <code>0.7.3</code>. Herdr Remote intentionally strips checked capability from exact <code>0.7.3</code>.</p>
+        <div class="task-columns">
+          <div>
+            <h4>Implementation Scope</h4>
+            <ol>
+              <li>Choose an explicit build version such as <code>0.7.3-checked.1</code>. Do not impersonate an unreleased upstream stable version.</li>
+              <li>Update Cargo package/lock metadata and tests that assert the ping version.</li>
+              <li>Confirm <code>ping</code> advertises <code>checked_input.v1</code> and <code>api.schema</code> describes the exact atomic read/send methods.</li>
+              <li>Keep Herdr Remote's exact original <code>0.7.3</code> prohibition. Add the patched version to positive protocol fixtures.</li>
+              <li>Push the fork commit, update dotnix's <code>herdr</code> input, and build the <code>sab@mz</code> activation package.</li>
+              <li>Coordinate with the operator before restarting Herdr. A restart can terminate or detach active agent sessions.</li>
+              <li>After restart, probe ping and schema locally before changing the connector or control plane.</li>
+            </ol>
+          </div>
+          <div>
+            <h4>Files</h4>
+            <ul class="path-list">
+              <li><code>/tmp/opencode/herdr-v0.7.3/Cargo.toml</code></li>
+              <li><code>/tmp/opencode/herdr-v0.7.3/Cargo.lock</code></li>
+              <li><code>/tmp/opencode/herdr-v0.7.3/tests/api_ping.rs</code></li>
+              <li><code>/home/sab/git_priv/herdr-remote/internal/herdr/client.go</code></li>
+              <li><code>/home/sab/git_priv/herdr-remote/internal/protocol/</code></li>
+              <li><code>/home/sab/git_priv/herdr-remote/protocol/</code></li>
+              <li><code>/home/sab/dotnix/flake.lock</code></li>
+            </ul>
+            <h4>Acceptance Criteria</h4>
+            <ul class="checklist">
+              <li>Original <code>0.7.3</code> remains read-only in all tests.</li>
+              <li>Patched version is not equal to <code>0.7.3</code>.</li>
+              <li>Local ping advertises checked input.</li>
+              <li>Schema inspection passes exact method, parameter, result, type, and atomic checks.</li>
+              <li>Checked read returns nonzero revision and content hash.</li>
+              <li>PWA snapshot advertises <code>checked_input.v1</code> only after all checks pass.</li>
+            </ul>
+          </div>
+        </div>
+        <h4>Verification</h4>
+        <pre><code>cargo fmt --check
+cargo check --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked --test api_ping
+
+cd /home/sab/git_priv/herdr-remote
+nix develop -c go test ./internal/herdr ./internal/protocol ./internal/connector ./internal/controlplane
+nix develop -c python3 -m unittest discover -s tests -p 'test_*.py'
+
+cd /home/sab/dotnix
+nix build '.#homeConfigurations."sab@mz".activationPackage'</code></pre>
+        <p><strong>Required handoff:</strong> version decision, fork commit, remote protocol commit if any, dotnix pin, local ping/schema evidence, whether Herdr was restarted, and explicit confirmation that original 0.7.3 stayed read-only.</p>
+      </article>
+
+      <article class="task" id="ACCEPT-001" data-task-id="ACCEPT-001" data-status="manual" data-dependencies="live-deployment">
+        <header><h3>ACCEPT-001: Complete desktop POC acceptance</h3><span class="badge manual">Manual</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P0</span></div>
+          <div><span class="meta-label">Owner</span><span class="meta-value">Operator with agent-assisted checklist</span></div>
+          <div><span class="meta-label">Repo changes</span><span class="meta-value">None unless a defect is reproduced</span></div>
+          <div><span class="meta-label">Can run with</span><span class="meta-value">SAFE-001, MOBILE-001, DOC-001</span></div>
+        </div>
+        <p><strong>Objective:</strong> verify the actual authenticated UI after the agent-discovery fix. Server-side probes are not a substitute for operator acceptance.</p>
+        <h4>Scenarios</h4>
+        <ol>
+          <li>Open the origin in a private desktop browser and complete Authelia two-factor authentication.</li>
+          <li>Confirm <code>mz/default</code> and both current agents appear after a normal refresh.</li>
+          <li>Select each agent and verify status and bounded output update without exposing raw paths.</li>
+          <li>Hide/show the tab and verify output subscriptions stop and resume safely.</li>
+          <li>Restart only the connector, not Herdr, and confirm the UI resyncs without stale controls.</li>
+          <li>Log out and confirm the PWA enters signed-out state and the provider session ends.</li>
+          <li>Confirm direct unauthenticated access returns to Authelia.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>No empty-host state after connector snapshot.</li>
+          <li>No stale output after reconnect or agent selection change.</li>
+          <li>No write controls while the instance is read-only.</li>
+          <li>Logout closes live application state and requires a fresh authenticated session.</li>
+          <li>Every defect has a minimal reproduction, browser/version, expected result, actual result, and sanitized screenshot if useful.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="MOBILE-001" data-task-id="MOBILE-001" data-status="manual" data-dependencies="live-deployment">
+        <header><h3>MOBILE-001: Validate Android installation and Web Push</h3><span class="badge manual">Manual</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P0</span></div>
+          <div><span class="meta-label">Device</span><span class="meta-value">Physical Android phone, current Chrome</span></div>
+          <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>herdr-remote/web</code> only if a bug exists</span></div>
+          <div><span class="meta-label">Can run with</span><span class="meta-value">SAFE-001, ACCEPT-001</span></div>
+        </div>
+        <p><strong>Objective:</strong> prove that the PWA installs, authenticates, renders, receives generic push, wakes into fresh state, updates, and opts out on a real Android device.</p>
+        <ol>
+          <li>Install from Chrome using <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+          <li>Launch in standalone mode and confirm layout at portrait and landscape widths.</li>
+          <li>Enable notifications in the app and approve Android permission.</li>
+          <li>Use <strong>Send test</strong> while the app is foregrounded, backgrounded, and closed.</li>
+          <li>Open a notification and confirm the app fetches a fresh authenticated snapshot instead of trusting payload state.</li>
+          <li>Turn notifications off, reload, and confirm opt-out remains effective.</li>
+          <li>Deploy a harmless PWA text/icon revision and confirm the service worker updates without a broken mixed version.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>Installability works over the production HTTPS origin.</li>
+          <li>No terminal, host, prompt, or agent content appears in the Android notification payload.</li>
+          <li>Notification click obtains current state through normal authentication.</li>
+          <li>Opt-out does not recreate or register a subscription.</li>
+          <li>Any browser limitation is recorded with Android and Chrome versions.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="DOC-001" data-task-id="DOC-001" data-status="ready" data-dependencies="none">
+        <header><h3>DOC-001: Reconcile deployment and API documentation</h3><span class="badge ready">Ready</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P1</span></div>
+          <div><span class="meta-label">Primary repos</span><span class="meta-value"><code>herdr-remote</code>, <code>dotnix</code></span></div>
+          <div><span class="meta-label">Conflict risk</span><span class="meta-value">Low if limited to docs</span></div>
+          <div><span class="meta-label">Can run with</span><span class="meta-value">All code lanes</span></div>
+        </div>
+        <p><strong>Objective:</strong> make every operator instruction match the implemented API and actual deployment state.</p>
+        <h4>Required Corrections</h4>
+        <ul>
+          <li><code>QUICKSTART.md</code> must obtain CSRF from <code>GET /api/v1/csrf</code>, not the session response.</li>
+          <li><code>docs/herdr-remote-rollout.md</code> must use the separate CSRF endpoint and mark <code>mz</code> enrolled.</li>
+          <li>Record the working deploy command <code>nix run github:serokell/deploy-rs -- .#zanoza</code>.</li>
+          <li>Add the <code>pane.agent_exited</code> versus <code>pane.exited</code> incident to troubleshooting or compatibility notes.</li>
+          <li>Explain that feature branches and user forks are currently authoritative; do not direct this deployment to an upstream PR.</li>
+          <li>Keep generic examples generic and clearly distinguish them from <code>sbulav</code>'s live deployment.</li>
+        </ul>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>Every copied command is syntactically valid and uses the current endpoints.</li>
+          <li>No example contains a secret or real one-time token.</li>
+          <li>README, quick start, runbook, protocol docs, dotnix rollout, and this roadmap agree on read-only status.</li>
+          <li>Link and HTML checks pass.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="SAFE-002" data-task-id="SAFE-002" data-status="blocked" data-dependencies="SAFE-001 ACCEPT-001">
+        <header><h3>SAFE-002: Prove end-to-end checked writes</h3><span class="badge blocked">Blocked</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P0</span></div>
+          <div><span class="meta-label">Blocked by</span><span class="meta-value">SAFE-001, ACCEPT-001</span></div>
+          <div><span class="meta-label">Risk</span><span class="meta-value">High: sends input to a live PTY</span></div>
+          <div><span class="meta-label">Environment</span><span class="meta-value">Disposable agent only</span></div>
+        </div>
+        <p><strong>Objective:</strong> demonstrate one harmless successful checked action and the complete fail-closed matrix against the live stack.</p>
+        <div class="callout danger"><p>Never run the first checked-write drill against an agent doing valuable work. Start a disposable agent with a prompt whose expected response is harmless and visible.</p></div>
+        <ol>
+          <li>Confirm patched version, capability, exact schema, and nonzero revision at the socket and PWA.</li>
+          <li>Run a bounded read and compare state bindings.</li>
+          <li>Perform one harmless text or prompt response with exact current preconditions.</li>
+          <li>Repeat with stale connector epoch, generation, revision, status, agent label, content hash, and prompt fingerprint. Every case must reject before enqueue.</li>
+          <li>Submit a duplicate action ID and confirm it never dispatches.</li>
+          <li>Interrupt transport after <code>action.received</code> and confirm a write becomes unknown and is never replayed.</li>
+          <li>Reconnect and query metadata-only action status. Verify no input or output content is persisted.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>Exactly one intentional action reaches the disposable PTY.</li>
+          <li>Every stale or duplicate action has a stable rejection code and no side effect.</li>
+          <li>An ambiguous write is <code>unknown/OUTCOME_UNKNOWN</code> and remains unreplayed after browser, connector, and control-plane reconnects.</li>
+          <li>Audit rows and logs contain metadata only.</li>
+          <li>Evidence includes action IDs and codes, not input or terminal content.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="OPS-001" data-task-id="OPS-001" data-status="ready" data-dependencies="none">
+        <header><h3>OPS-001: Implement and drill backup and restore</h3><span class="badge ready">Ready</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P1</span></div>
+          <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>dotnix</code></span></div>
+          <div><span class="meta-label">Primary host</span><span class="meta-value"><code>zanoza</code></span></div>
+          <div><span class="meta-label">Conflict risk</span><span class="meta-value">Medium: restic and service lifecycle</span></div>
+        </div>
+        <p><strong>Objective:</strong> produce encrypted, SQLite-consistent backups and prove restoration without exposing terminal content or losing action-ID tombstones.</p>
+        <ol>
+          <li>Inventory <code>control.db</code>, connector issuing CA material, server identity material required for recovery, and connector mutable certificates.</li>
+          <li>Use SQLite online backup or a controlled service stop. Never copy the live database naively.</li>
+          <li>Integrate with existing encrypted restic infrastructure and least-privilege credentials.</li>
+          <li>Restore into an isolated test path or disposable VM, verify migrations/readiness, inspect metadata-only rows, and verify tombstones survive.</li>
+          <li>Document recovery time, required operator steps, ownership/modes, and rollback.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>Automated backup exits nonzero on partial failure.</li>
+          <li>Backups are encrypted and do not add secrets to Git or the Nix store.</li>
+          <li>Restore reaches <code>/readyz</code> and connectors can reacquire leases.</li>
+          <li>Duplicate historical action IDs remain invalid after restore.</li>
+          <li>Retention and restore drills are documented in <code>docs/operations.md</code> and dotnix rollout notes.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="OPS-002" data-task-id="OPS-002" data-status="ready" data-dependencies="none">
+        <header><h3>OPS-002: Add production monitoring and alerts</h3><span class="badge ready">Ready</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P1</span></div>
+          <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>dotnix</code></span></div>
+          <div><span class="meta-label">Services</span><span class="meta-value">Prometheus, Grafana, alerting</span></div>
+          <div><span class="meta-label">Conflict risk</span><span class="meta-value">Low outside shared scrape config</span></div>
+        </div>
+        <p><strong>Objective:</strong> detect control-plane and connector failures without placing user content, credentials, endpoint keys, or high-cardinality identifiers in metrics.</p>
+        <ol>
+          <li>Scrape <code>127.0.0.1:8080/metrics</code> from an authorized local path; do not publish metrics through the PWA origin.</li>
+          <li>Alert on readiness failure, service restart loops, repeated connector disconnects, malformed messages, audit completion failures, action deadline saturation, push delivery failures, and certificate expiry.</li>
+          <li>Add a small dashboard for process health, host connectivity, action outcomes by stable code, and bounded queue pressure.</li>
+          <li>Trigger each safe alert deliberately and record recovery behavior.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>No prompt, output, input, key, token, certificate body, endpoint, or terminal ID appears in labels.</li>
+          <li>Alerts identify the service and failure class with actionable runbook links.</li>
+          <li>Control plane down and connector disconnected alerts are proven.</li>
+          <li>Monitoring survives a control-plane restart.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="CERT-001" data-task-id="CERT-001" data-status="blocked" data-dependencies="OPS-001 OPS-002">
+        <header><h3>CERT-001: Drill certificate rotation, revocation, and re-enrollment</h3><span class="badge blocked">Blocked</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P1</span></div>
+          <div><span class="meta-label">Blocked by</span><span class="meta-value">OPS-001, OPS-002</span></div>
+          <div><span class="meta-label">Primary repos</span><span class="meta-value"><code>dotnix</code>, <code>herdr-remote</code> if defects</span></div>
+          <div><span class="meta-label">Risk</span><span class="meta-value">High: live credentials</span></div>
+        </div>
+        <p><strong>Objective:</strong> verify the complete connector credential lifecycle and explicitly confirm whether the connector client issuing CA and connector server trust root are separated.</p>
+        <ol>
+          <li>Record current certificate fingerprints and expiries without printing private material.</li>
+          <li>Exercise rotation and confirm the mutable certificate changes while the private key remains unchanged.</li>
+          <li>Revoke <code>mz</code> through authenticated, Origin- and CSRF-protected API; confirm active lease closes and alert fires.</li>
+          <li>Generate a fresh local key and CSR, create a one-time enrollment, replace SOPS inputs, and restore service.</li>
+          <li>Verify old credentials remain rejected.</li>
+          <li>Verify CA roles. If one CA currently signs both server and client identities, design and execute a staged split with rollback.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>No private key crosses hosts in plaintext.</li>
+          <li>Enrollment tokens are mode <code>0600</code>, single-use, and deleted.</li>
+          <li>Revocation closes the current lease and blocks reconnect.</li>
+          <li>Re-enrollment uses a fresh private key.</li>
+          <li>Backup and monitoring evidence covers every step.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="HOST-001" data-task-id="HOST-001" data-status="ready" data-dependencies="operator-scheduling">
+        <header><h3>HOST-001: Enroll the zanoza Linux connector</h3><span class="badge ready">Ready</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P1</span></div>
+          <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>dotnix</code></span></div>
+          <div><span class="meta-label">Host</span><span class="meta-value"><code>zanoza</code></span></div>
+          <div><span class="meta-label">Do not touch</span><span class="meta-value">Darwin homes or global HM imports</span></div>
+        </div>
+        <p><strong>Objective:</strong> add a second outbound Linux connector and prove multi-host projection without changing the browser/control-plane trust boundary.</p>
+        <ol>
+          <li>Confirm Herdr runs as <code>sab</code> and the expected socket exists on <code>zanoza</code>.</li>
+          <li>Create a host-specific one-time enrollment and local P-256 key. Never reuse <code>mz</code> material or host ID.</li>
+          <li>Add a dedicated SOPS file or dedicated host entries with <code>0400</code> runtime modes.</li>
+          <li>Import the Home Manager connector module only in <code>homes/x86_64-linux/sab@zanoza/default.nix</code>.</li>
+          <li>Build before activation, then start the connector and verify the PWA shows exactly the intended second host.</li>
+          <li>Verify read-only behavior before any checked-write test.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>Unique host UUID, private key, certificate, and display name.</li>
+          <li>No inbound connector or Herdr port opens on <code>zanoza</code>.</li>
+          <li><code>mz</code> remains connected while <code>zanoza</code> joins and leaves.</li>
+          <li>Host removal or connector stop removes/stales only the correct projection.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="HOST-002" data-task-id="HOST-002" data-status="blocked" data-dependencies="HOST-001">
+        <header><h3>HOST-002: Enroll additional Linux Herdr hosts</h3><span class="badge blocked">Blocked</span></header>
+        <p><strong>Objective:</strong> repeat the proven per-host pattern for only the Linux machines that actively run Herdr. Create one issue per host and one distinct credential set per host.</p>
+        <p><strong>Constraints:</strong> do not add the connector globally, do not enroll <code>mba13</code>, do not add macOS support, and do not exceed the product limit without revisiting bounds and tests.</p>
+        <h4>Acceptance Criteria Per Host</h4>
+        <ul>
+          <li>Stable unique host ID and SOPS-owned credentials.</li>
+          <li>Same-user local socket access and no inbound listener.</li>
+          <li>Independent connect, disconnect, revoke, and restore behavior.</li>
+          <li>Correct host/instance/terminal routing with no cross-host output or action.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="TEST-001" data-task-id="TEST-001" data-status="ready" data-dependencies="none">
+        <header><h3>TEST-001: Add a real Herdr compatibility seam</h3><span class="badge ready">Ready</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P1</span></div>
+          <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>herdr-remote</code></span></div>
+          <div><span class="meta-label">Files</span><span class="meta-value"><code>internal/herdr</code>, <code>internal/connector</code>, test fixtures</span></div>
+          <div><span class="meta-label">Conflict risk</span><span class="meta-value">Low if test-only</span></div>
+        </div>
+        <p><strong>Objective:</strong> ensure connector subscriptions and required methods are checked against Herdr's actual supported API, so an invented event name cannot pass all release gates again.</p>
+        <ol>
+          <li>Capture a sanitized API schema or supported event fixture from original 0.7.3 and the checked fork.</li>
+          <li>Make the fake local API reject unknown event types instead of accepting every subscription.</li>
+          <li>Add a connector bootstrap test that fails before the fix and proves a snapshot is published with supported events.</li>
+          <li>Prefer a small socket-level contract harness over launching the complete TUI where practical.</li>
+          <li>Cover zero agents, multiple agents, subscription disconnect, and unsupported method behavior.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>Changing <code>pane.exited</code> back to <code>pane.agent_exited</code> makes a deterministic test fail.</li>
+          <li>The test validates the first complete instance snapshot, not only method call order.</li>
+          <li>Original 0.7.3 remains a valid read-only local API.</li>
+          <li>The checked fork's additional schema remains an additive positive case.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="TEST-002" data-task-id="TEST-002" data-status="ready" data-dependencies="none">
+        <header><h3>TEST-002: Expand restart, deadline, and no-replay coverage</h3><span class="badge ready">Ready</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P1</span></div>
+          <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>herdr-remote</code></span></div>
+          <div><span class="meta-label">Owner area</span><span class="meta-value">Control plane, connector, store</span></div>
+          <div><span class="meta-label">Parallelism</span><span class="meta-value">Can run with frontend and ops work</span></div>
+        </div>
+        <p><strong>Objective:</strong> convert the most important crash and transport claims into deterministic automated scenarios.</p>
+        <h4>Cases</h4>
+        <ul>
+          <li>Control plane restarts after durable intent but before connector dispatch.</li>
+          <li>Connector disconnects before and after receipt.</li>
+          <li>Browser disconnects before result delivery.</li>
+          <li>Late connector result arrives after server deadline classification.</li>
+          <li>Action tombstone survives detail retention and database restore.</li>
+          <li>Connector reconnect creates new epochs and no old output subscriptions.</li>
+          <li>State inventory removes unconfigured instances without removing returning instances early.</li>
+        </ul>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>No test relies on wall-clock sleeps when a fake clock or synchronization point is possible.</li>
+          <li>Reads use failed outcomes; ambiguous writes use unknown outcomes.</li>
+          <li>No scenario dispatches the same action ID twice.</li>
+          <li>Tests assert persisted fields omit content.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="UX-001" data-task-id="UX-001" data-status="blocked" data-dependencies="ACCEPT-001 MOBILE-001 findings">
+        <header><h3>UX-001: Resolve evidence-backed PWA defects</h3><span class="badge blocked">Blocked</span></header>
+        <p><strong>Objective:</strong> fix only usability or accessibility problems reproduced during desktop and Android acceptance. Do not redesign the established visual language speculatively.</p>
+        <h4>Likely File Boundary</h4>
+        <ul class="path-list">
+          <li><code>web/src/ui/App.tsx</code></li>
+          <li><code>web/src/styles.css</code></li>
+          <li><code>web/src/connection/</code></li>
+          <li><code>web/tests/e2e/responsive.spec.ts</code></li>
+          <li><code>web/tests/e2e/control.spec.ts</code></li>
+        </ul>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>Every change references an acceptance finding with a reproduction.</li>
+          <li>Desktop, phone, tablet, keyboard, focus, contrast, and screen-reader behavior do not regress.</li>
+          <li>No transient content enters storage, analytics, notifications, or logs.</li>
+          <li>Chromium and WebKit e2e suites pass.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="DECIDE-001" data-task-id="DECIDE-001" data-status="blocked" data-dependencies="SAFE-002 ACCEPT-001 MOBILE-001 OPS-001 OPS-002">
+        <header><h3>DECIDE-001: Record the POC go, pause, or stop decision</h3><span class="badge blocked">Blocked</span></header>
+        <p><strong>Objective:</strong> turn POC evidence into an explicit operator decision before release normalization or broader scope.</p>
+        <h4>Decision Inputs</h4>
+        <ul>
+          <li>Desktop and Android usability.</li>
+          <li>Push reliability.</li>
+          <li>Checked-write safety evidence.</li>
+          <li>Operational burden for backup, monitoring, and credentials.</li>
+          <li>Value of enrolling more hosts.</li>
+          <li>Residual risk and maintenance cost of the Herdr fork.</li>
+        </ul>
+        <p><strong>Output:</strong> one dated decision record with <code>go</code>, <code>pause</code>, or <code>stop</code>; accepted limitations; next milestone; and tasks explicitly cancelled or deferred.</p>
+      </article>
+
+      <article class="task" id="REL-001" data-task-id="REL-001" data-status="blocked" data-dependencies="DECIDE-001-go">
+        <header><h3>REL-001: Cut fork releases and immutable deployment pins</h3><span class="badge blocked">Blocked</span></header>
+        <div class="task-meta">
+          <div><span class="meta-label">Priority</span><span class="meta-value">P2</span></div>
+          <div><span class="meta-label">Blocked by</span><span class="meta-value">DECIDE-001 go decision</span></div>
+          <div><span class="meta-label">Repos</span><span class="meta-value">All three forks</span></div>
+          <div><span class="meta-label">Upstream</span><span class="meta-value">No PRs</span></div>
+        </div>
+        <p><strong>Objective:</strong> stop deploying mutable feature branch heads and establish a repeatable fork-owned release process.</p>
+        <ol>
+          <li>Run the complete release gate and record artifacts.</li>
+          <li>Choose explicit versions for Herdr checked fork and Herdr Remote.</li>
+          <li>Merge or fast-forward feature branches into the user's fork main branches only after review.</li>
+          <li>Create signed or annotated fork tags and release notes.</li>
+          <li>Pin dotnix to immutable revisions or tags and verify lockfile hashes.</li>
+          <li>Deploy control plane first, verify compatibility, then connectors.</li>
+          <li>Execute and record rollback to the previous immutable pin.</li>
+        </ol>
+        <h4>Acceptance Criteria</h4>
+        <ul>
+          <li>No deployment input follows an unreviewed moving branch.</li>
+          <li>All commits and tags exist in <code>sbulav</code> forks.</li>
+          <li>No upstream PR is created.</li>
+          <li>Release notes include protocol compatibility, migrations, security invariants, known limitations, and rollback.</li>
+        </ul>
+      </article>
+
+      <article class="task" id="ANDROID-001" data-task-id="ANDROID-001" data-status="optional" data-dependencies="MOBILE-001 evidence">
+        <header><h3>ANDROID-001: Investigate native Android only if the PWA is inadequate</h3><span class="badge optional">Optional</span></header>
+        <p><strong>Trigger:</strong> MOBILE-001 must identify a material browser limitation that cannot be solved safely in the PWA.</p>
+        <p><strong>Scope:</strong> investigation issue only. Compare WebView/TWA/native options, authentication boundaries, push behavior, update model, accessibility, maintenance cost, and whether any native bridge would expand credential or content persistence.</p>
+        <p><strong>Non-goal:</strong> do not start a native application because it seems more polished. The PWA remains the default mobile client unless evidence changes the decision.</p>
+      </article>
+    </section>
+
+    <section id="rules">
+      <h2>Agent Operating Rules</h2>
+      <h3>Non-negotiable repository rules</h3>
+      <ul>
+        <li>Read <code>AGENTS.md</code>, README, relevant protocol docs, and this roadmap before editing.</li>
+        <li>Keep changes minimal and focused. Do not restore legacy relay, Telegram, native clients, SSH polling, UDP, power control, or session lifecycle code.</li>
+        <li>Use Conventional Commits without AI attribution.</li>
+        <li>Push only to <code>sbulav/herdr-remote</code>, <code>sbulav/herdr</code>, and <code>sbulav/dotnix</code>. Do not open upstream PRs.</li>
+        <li>Do not amend, force-push, reset, or modify unrelated work.</li>
+        <li>Never touch or delete the unrelated <code>/home/sab/dotnix/result</code>.</li>
+        <li>Never decrypt or print SOPS values unless the task absolutely requires runtime use. Document secret names and paths, not values.</li>
+        <li>Coordinate before restarting Herdr, the control plane, Authelia, Traefik, or any service that may disrupt current work.</li>
+      </ul>
+
+      <h3>Protocol change rule</h3>
+      <p>A wire-contract change is incomplete until all of these are updated together:</p>
+      <ul>
+        <li>Normative JSON Schema under <code>protocol/</code>.</li>
+        <li>Markdown contract under <code>docs/</code>.</li>
+        <li>Go validation and direction handling.</li>
+        <li>Generated TypeScript validator and discriminated types.</li>
+        <li>Positive and negative fixtures.</li>
+        <li>Python, Go, Vitest, and Playwright cases as applicable.</li>
+        <li>Compatibility and rollout notes.</li>
+      </ul>
+
+      <h3>Definition of done for any work package</h3>
+      <ol>
+        <li>The task's acceptance criteria are met with evidence.</li>
+        <li>Relevant tests, lint, type checks, package builds, and <code>git diff --check</code> pass.</li>
+        <li>Security invariants remain explicit in code and tests.</li>
+        <li>Docs and runbooks match deployed behavior.</li>
+        <li>No secret, prompt, output, input, key, or credential body entered Git, logs, metrics, fixtures, or screenshots.</li>
+        <li>Only intended files are staged and committed.</li>
+        <li>The fork branch is pushed, deployment is verified if changed, and rollback is known.</li>
+        <li>The tracker receives an append-only handoff with commits, commands, results, risks, and next dependency.</li>
+      </ol>
+
+      <h3>Standard verification commands</h3>
+      <pre><code># Herdr Remote
+cd /home/sab/git_priv/herdr-remote
+nix develop -c make check
+nix flake check
+nix build .#herdr-controlplane .#herdr-connector .#herdr-pwa
+make e2e-nix
+git diff --check
+
+# Checked Herdr fork
+cd /tmp/opencode/herdr-v0.7.3
+cargo fmt --check
+cargo check --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked --test api_ping
+
+# mz Home Manager deployment
+cd /home/sab/dotnix
+nix build '.#homeConfigurations."sab@mz".activationPackage'
+nix run '.#homeConfigurations."sab@mz".activationPackage'
+systemctl --user is-active herdr-connector.service
+
+# zanoza deployment
+cd /home/sab/dotnix
+nix run github:serokell/deploy-rs -- .#zanoza
+ssh zanoza 'systemctl is-active herdr-controlplane.service'
+ssh zanoza 'curl --fail http://127.0.0.1:8080/healthz'
+ssh zanoza 'curl --fail http://127.0.0.1:8080/readyz'</code></pre>
+    </section>
+
+    <section id="reference">
+      <h2>Reference Map</h2>
+      <h3>Primary source files</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Files</th></tr></thead>
+          <tbody>
+            <tr><td>Product and operations</td><td><code>README.md</code>, <code>QUICKSTART.md</code>, <code>docs/operations.md</code>, <code>docs/enterprise-backend.md</code></td></tr>
+            <tr><td>Wire contracts</td><td><code>docs/browser-protocol-v1.md</code>, <code>docs/connector-protocol-v1.md</code>, <code>protocol/*.schema.json</code></td></tr>
+            <tr><td>Control plane</td><td><code>cmd/controlplane/</code>, <code>internal/controlplane/</code>, <code>internal/auth/</code>, <code>internal/store/store.go</code>, <code>internal/push/</code></td></tr>
+            <tr><td>Connector</td><td><code>cmd/connector/</code>, <code>internal/connector/</code>, <code>internal/herdr/client.go</code>, <code>internal/prompt/</code></td></tr>
+            <tr><td>PWA</td><td><code>web/src/</code>, <code>web/tests/</code>, <code>web/tests/e2e/</code></td></tr>
+            <tr><td>Nix packaging</td><td><code>flake.nix</code>, <code>nix/modules/</code>, <code>nix/tests/modules.nix</code>, <code>nix/examples/</code></td></tr>
+            <tr><td>Checked Herdr API</td><td><code>src/app/api/agents.rs</code>, <code>src/pane/terminal.rs</code>, <code>src/terminal/runtime.rs</code>, <code>tests/api_ping.rs</code> in the Herdr fork</td></tr>
+            <tr><td>Live control plane</td><td><code>/home/sab/dotnix/systems/x86_64-linux/zanoza/default.nix</code>, <code>modules/nixos/containers/herdr-remote/default.nix</code></td></tr>
+            <tr><td>Live mz connector</td><td><code>/home/sab/dotnix/homes/x86_64-linux/sab@mz/default.nix</code></td></tr>
+            <tr><td>Rollout</td><td><code>/home/sab/dotnix/docs/herdr-remote-rollout.md</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Commit ledger</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Repository</th><th>Commit</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>herdr-remote</td><td><code>6c9160d</code></td><td>Define outbound connector v1 contract.</td></tr>
+            <tr><td>herdr-remote</td><td><code>9058f12</code></td><td>Define browser control contract.</td></tr>
+            <tr><td>herdr-remote</td><td><code>c5723f7</code></td><td>Add enterprise control plane and connector.</td></tr>
+            <tr><td>herdr-remote</td><td><code>cef1989</code></td><td>Cover negotiated instance inventory.</td></tr>
+            <tr><td>herdr-remote</td><td><code>074dc42</code></td><td>Replace legacy client with enterprise PWA.</td></tr>
+            <tr><td>herdr-remote</td><td><code>4f6eef9</code></td><td>Package enterprise deployment.</td></tr>
+            <tr><td>herdr-remote</td><td><code>0760ea3</code></td><td>Align browser API lifecycle.</td></tr>
+            <tr><td>herdr-remote</td><td><code>8f162e5</code></td><td>Use supported pane exit event.</td></tr>
+            <tr><td>herdr-remote</td><td><code>d0c8727</code></td><td>Remove connector-only sequence from browser state.</td></tr>
+            <tr><td>herdr-remote</td><td><code>6664e6d</code></td><td>Serialize empty browser collections as arrays.</td></tr>
+            <tr><td>Herdr fork</td><td><code>f1df299</code></td><td>Add checked atomic agent input.</td></tr>
+            <tr><td>dotnix</td><td><code>12a2da7</code></td><td>Deploy enterprise control-plane POC.</td></tr>
+            <tr><td>dotnix</td><td><code>215ec10</code></td><td>Avoid systemd URL specifier expansion.</td></tr>
+            <tr><td>dotnix</td><td><code>af0eadb</code></td><td>Enroll mz POC connector.</td></tr>
+            <tr><td>dotnix</td><td><code>987926f</code></td><td>Deploy connector event subscription fix.</td></tr>
+            <tr><td>dotnix</td><td><code>4e2f14a</code></td><td>Deploy browser instance projection fix.</td></tr>
+            <tr><td>dotnix</td><td><code>c15aeb6</code></td><td>Deploy empty browser collection fix.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Current rollback principles</h3>
+      <ul>
+        <li>For <code>mz</code>, switch to the previous Home Manager generation or previous immutable dotnix input and restart only the connector. Do not remove Herdr itself.</li>
+        <li>For <code>zanoza</code>, deploy the previous known-good dotnix revision or NixOS generation. Restore SQLite and CA material only from a matching encrypted backup.</li>
+        <li>Revoke connector credentials when disabling a host.</li>
+        <li>Never roll back by restoring the obsolete relay, SSH polling, Telegram, native mobile, or power-control services.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Herdr Remote enterprise v1 handoff. Last updated 2026-07-16 after live <code>mz</code> agent projection and strict browser snapshot validation were repaired and verified.</p>
+  </footer>
+</body>
+</html>
