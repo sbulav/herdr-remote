@@ -57,6 +57,7 @@ type Engine struct {
 	rateTokens         float64
 	lastRate           time.Time
 	statePublisher     func(protocol.InstanceSnapshot) error
+	deltaPublisher     func(protocol.StateDelta) error
 	failureHandler     func(error)
 }
 
@@ -77,23 +78,29 @@ func (e *Engine) Snapshot() protocol.InstanceSnapshot {
 }
 
 // Reconcile performs subscribe-snapshot-subscribe-snapshot. The second
-// snapshot is the only state published, so events cannot create a bootstrap
-// gap. Any subscription failure invalidates the state and is retried upstream.
+// snapshot is authoritative, so events cannot create a bootstrap gap. Initial
+// and compatibility changes publish snapshots; ordinary agent changes keep
+// the epoch and publish sequenced deltas upstream.
 func (e *Engine) Reconcile(ctx context.Context) (protocol.InstanceSnapshot, error) {
+	snapshot, _, err := e.reconcile(ctx)
+	return snapshot, err
+}
+
+func (e *Engine) reconcile(ctx context.Context) (protocol.InstanceSnapshot, *protocol.StateDelta, error) {
 	e.reconcileMu.Lock()
 	defer e.reconcileMu.Unlock()
 	ping, err := e.local.Ping(ctx)
 	if err != nil {
-		return protocol.InstanceSnapshot{}, err
+		return protocol.InstanceSnapshot{}, nil, err
 	}
 	global, err := e.local.Subscribe(ctx, []herdr.SubscriptionSpec{{Type: "pane.created"}, {Type: "pane.closed"}, {Type: "pane.agent_detected"}, {Type: "pane.exited"}})
 	if err != nil {
-		return protocol.InstanceSnapshot{}, err
+		return protocol.InstanceSnapshot{}, nil, err
 	}
 	first, err := e.local.Snapshot(ctx)
 	if err != nil {
 		global.Close()
-		return protocol.InstanceSnapshot{}, err
+		return protocol.InstanceSnapshot{}, nil, err
 	}
 	specs := make([]herdr.SubscriptionSpec, 0, len(first.Snapshot.Agents))
 	for _, a := range first.Snapshot.Agents {
@@ -104,19 +111,19 @@ func (e *Engine) Reconcile(ctx context.Context) (protocol.InstanceSnapshot, erro
 	paneSub, err := e.local.Subscribe(ctx, specs)
 	if err != nil {
 		global.Close()
-		return protocol.InstanceSnapshot{}, err
+		return protocol.InstanceSnapshot{}, nil, err
 	}
 	authoritative, err := e.local.Snapshot(ctx)
 	if err != nil {
 		global.Close()
 		paneSub.Close()
-		return protocol.InstanceSnapshot{}, err
+		return protocol.InstanceSnapshot{}, nil, err
 	}
 	schema, schemaErr := e.local.InspectSchema(ctx)
 	checked := schemaErr == nil && herdr.SupportsCheckedInput(ping, schema)
 	epoch, err := protocol.NewUUIDv7()
 	if err != nil {
-		return protocol.InstanceSnapshot{}, err
+		return protocol.InstanceSnapshot{}, nil, err
 	}
 	state := protocol.InstanceSnapshot{InstanceID: e.cfg.InstanceID, Epoch: epoch, Sequence: 0, HerdrVersion: ping.Version, HerdrProtocol: ping.Protocol, Status: "online", Capabilities: []string{"read.v1", "output.subscribe.v1", "prompt.snapshot.v1"}}
 	if checked {
@@ -129,7 +136,7 @@ func (e *Engine) Reconcile(ctx context.Context) (protocol.InstanceSnapshot, erro
 	if len(authoritative.Snapshot.Agents) > protocol.MaxAgents {
 		global.Close()
 		paneSub.Close()
-		return protocol.InstanceSnapshot{}, errors.New("Herdr agent limit exceeded")
+		return protocol.InstanceSnapshot{}, nil, errors.New("Herdr agent limit exceeded")
 	}
 	byTerminal := map[string]protocol.Agent{}
 	for _, a := range authoritative.Snapshot.Agents {
@@ -144,30 +151,52 @@ func (e *Engine) Reconcile(ctx context.Context) (protocol.InstanceSnapshot, erro
 		if err := protocol.ValidateSnapshot(protocol.InstanceSnapshot{InstanceID: e.cfg.InstanceID, Epoch: epoch, Sequence: 0, HerdrVersion: ping.Version, HerdrProtocol: ping.Protocol, Status: "online", Capabilities: state.Capabilities, Agents: []protocol.Agent{pa}}); err != nil {
 			global.Close()
 			paneSub.Close()
-			return protocol.InstanceSnapshot{}, err
+			return protocol.InstanceSnapshot{}, nil, err
 		}
 		state.Agents = append(state.Agents, pa)
 		byTerminal[pa.TerminalID] = pa
 	}
 	e.mu.Lock()
-	unchanged := sameInstanceMaterial(e.state, state)
-	if unchanged {
-		state = e.state
-		byTerminal = cloneAgentMap(e.byTerminal)
+	previous := e.state
+	var delta *protocol.StateDelta
+	if sameInstanceMetadata(previous, state) {
+		changes := reconcileAgentChanges(previous.Agents, state.Agents)
+		if len(changes) == 0 {
+			state = previous
+			byTerminal = cloneAgentMap(e.byTerminal)
+		} else {
+			state.Epoch = previous.EffectiveEpoch()
+			state.Sequence = previous.Sequence + 1
+			byTerminal = make(map[string]protocol.Agent, len(state.Agents))
+			for _, agent := range state.Agents {
+				byTerminal[agent.TerminalID] = agent
+			}
+			delta = &protocol.StateDelta{InstanceID: state.InstanceID, Epoch: state.EffectiveEpoch(), Sequence: state.Sequence, Changes: changes}
+		}
 	}
 	old := e.subscriptions
 	e.subscriptions = []*herdr.Subscription{global, paneSub}
 	e.state = state
 	e.byTerminal = byTerminal
 	e.checked = checked
-	if !unchanged {
+	if previous.EffectiveEpoch() != state.EffectiveEpoch() {
 		e.promptFingerprints = map[string]string{}
+	} else if delta != nil {
+		for _, change := range delta.Changes {
+			if change.Operation == "remove" || (change.Agent != nil && change.Agent.Status != "blocked") {
+				terminalID := change.TerminalID
+				if change.Agent != nil {
+					terminalID = change.Agent.TerminalID
+				}
+				delete(e.promptFingerprints, terminalID)
+			}
+		}
 	}
 	e.mu.Unlock()
 	for _, s := range old {
 		_ = s.Close()
 	}
-	return cloneSnapshot(state), nil
+	return cloneSnapshot(state), delta, nil
 }
 
 // PollPrompts samples blocked agents, increments their connector generation on
@@ -246,8 +275,9 @@ func (e *Engine) PollPrompts(ctx context.Context) ([]protocol.PromptSnapshot, *p
 	return prompts, delta, nil
 }
 
-func (e *Engine) RunReconciliation(ctx context.Context, publish func(protocol.InstanceSnapshot) error) error {
+func (e *Engine) RunReconciliation(ctx context.Context, publish func(protocol.InstanceSnapshot) error, publishDelta func(protocol.StateDelta) error) error {
 	e.SetStatePublisher(publish)
+	e.SetDeltaPublisher(publishDelta)
 	if snap, err := e.Reconcile(ctx); err != nil {
 		return err
 	} else if err := publish(snap); err != nil {
@@ -283,11 +313,15 @@ func (e *Engine) RunReconciliation(ctx context.Context, publish func(protocol.In
 			}
 		}
 		before := e.Snapshot().EffectiveEpoch()
-		snap, err := e.Reconcile(ctx)
+		snap, delta, err := e.reconcile(ctx)
 		if err != nil {
 			return err
 		}
-		if snap.EffectiveEpoch() != before {
+		if delta != nil {
+			if err := publishDelta(*delta); err != nil {
+				return err
+			}
+		} else if snap.EffectiveEpoch() != before {
 			if err := publish(snap); err != nil {
 				return err
 			}
@@ -317,24 +351,38 @@ func (e *Engine) ForceReconcile(ctx context.Context) (protocol.InstanceSnapshot,
 	e.mu.Unlock()
 	return e.Reconcile(ctx)
 }
-func sameInstanceMaterial(a, b protocol.InstanceSnapshot) bool {
-	if a.EffectiveEpoch() == "" || a.InstanceID != b.InstanceID || a.HerdrVersion != b.HerdrVersion || a.HerdrProtocol != b.HerdrProtocol || a.Status != b.Status || !slices.Equal(a.Capabilities, b.Capabilities) || len(a.Agents) != len(b.Agents) {
-		return false
+func sameInstanceMetadata(a, b protocol.InstanceSnapshot) bool {
+	return a.EffectiveEpoch() != "" && a.InstanceID == b.InstanceID && a.HerdrVersion == b.HerdrVersion && a.HerdrProtocol == b.HerdrProtocol && a.Status == b.Status && slices.Equal(a.Capabilities, b.Capabilities)
+}
+func reconcileAgentChanges(previous, current []protocol.Agent) []protocol.StateChange {
+	previousByID := make(map[string]protocol.Agent, len(previous))
+	for _, agent := range previous {
+		previousByID[agent.TerminalID] = agent
 	}
-	byID := map[string]protocol.Agent{}
-	for _, agent := range a.Agents {
-		agent.Generation = 0
-		agent.AgentGeneration = 0
-		byID[agent.TerminalID] = agent
+	currentIDs := make(map[string]struct{}, len(current))
+	changes := make([]protocol.StateChange, 0)
+	for i := range current {
+		agent := &current[i]
+		currentIDs[agent.TerminalID] = struct{}{}
+		if old, exists := previousByID[agent.TerminalID]; exists {
+			old.Generation = old.EffectiveGeneration()
+			old.AgentGeneration = 0
+			agent.Generation = old.EffectiveGeneration()
+			agent.AgentGeneration = 0
+			if reflect.DeepEqual(old, *agent) {
+				continue
+			}
+			agent.Generation++
+		}
+		copy := *agent
+		changes = append(changes, protocol.StateChange{Operation: "upsert", Agent: &copy})
 	}
-	for _, agent := range b.Agents {
-		agent.Generation = 0
-		agent.AgentGeneration = 0
-		if !reflect.DeepEqual(byID[agent.TerminalID], agent) {
-			return false
+	for _, agent := range previous {
+		if _, exists := currentIDs[agent.TerminalID]; !exists {
+			changes = append(changes, protocol.StateChange{Operation: "remove", TerminalID: agent.TerminalID, Reason: "reconciled"})
 		}
 	}
-	return true
+	return changes
 }
 func cloneAgentMap(in map[string]protocol.Agent) map[string]protocol.Agent {
 	out := make(map[string]protocol.Agent, len(in))
@@ -346,6 +394,11 @@ func cloneAgentMap(in map[string]protocol.Agent) map[string]protocol.Agent {
 func (e *Engine) SetStatePublisher(publish func(protocol.InstanceSnapshot) error) {
 	e.mu.Lock()
 	e.statePublisher = publish
+	e.mu.Unlock()
+}
+func (e *Engine) SetDeltaPublisher(publish func(protocol.StateDelta) error) {
+	e.mu.Lock()
+	e.deltaPublisher = publish
 	e.mu.Unlock()
 }
 func (e *Engine) SetFailureHandler(handler func(error)) {
@@ -634,23 +687,34 @@ func (e *Engine) pollOutput(ctx context.Context, s protocol.OutputSubscribe, las
 		return err
 	}
 	if checked && r.Read.EffectiveRevision() != a.HerdrInputRevision {
-		snapshot, reconcileErr := e.Reconcile(ctx)
+		previousEpoch := state.EffectiveEpoch()
+		snapshot, delta, reconcileErr := e.reconcile(ctx)
 		if reconcileErr != nil {
 			return reconcileErr
 		}
 		e.mu.RLock()
 		statePublisher := e.statePublisher
+		deltaPublisher := e.deltaPublisher
 		a, ok = e.byTerminal[s.Target.TerminalID]
 		state = e.state
 		e.mu.RUnlock()
 		if !ok {
 			return errors.New("target gone after reconciliation")
 		}
-		if statePublisher == nil {
-			return errors.New("state publisher unavailable")
-		}
-		if err := statePublisher(snapshot); err != nil {
-			return err
+		if delta != nil {
+			if deltaPublisher == nil {
+				return errors.New("state delta publisher unavailable")
+			}
+			if err := deltaPublisher(*delta); err != nil {
+				return err
+			}
+		} else if snapshot.EffectiveEpoch() != previousEpoch {
+			if statePublisher == nil {
+				return errors.New("state publisher unavailable")
+			}
+			if err := statePublisher(snapshot); err != nil {
+				return err
+			}
 		}
 		r, err = e.readAgent(ctx, a, s.Source, s.Lines)
 		if err != nil {

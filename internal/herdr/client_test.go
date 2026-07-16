@@ -7,6 +7,7 @@ import (
 	"net"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestUnixNDJSONClient(t *testing.T) {
@@ -34,6 +35,46 @@ func TestUnixNDJSONClient(t *testing.T) {
 	}
 	if p.Version != "0.7.3" || p.Protocol != 16 {
 		t.Fatalf("unexpected ping: %#v", p)
+	}
+}
+
+func TestSubscriptionCloseDoesNotReportTransportFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "herdr.sock")
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer conn.Close()
+		line, _ := bufio.NewReader(conn).ReadBytes('\n')
+		var req request
+		_ = json.Unmarshal(line, &req)
+		_ = json.NewEncoder(conn).Encode(map[string]any{"id": req.ID, "result": map[string]any{"type": "subscription_started"}})
+		_, _ = bufio.NewReader(conn).ReadBytes('\n')
+	}()
+	client, err := NewUnixClient(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subscription, err := client.Subscribe(context.Background(), []SubscriptionSpec{{Type: "pane.created"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := subscription.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err, ok := <-subscription.Errors:
+		if ok {
+			t.Fatalf("intentional subscription close reported error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("subscription did not close")
 	}
 }
 

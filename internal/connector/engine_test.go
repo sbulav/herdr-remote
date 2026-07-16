@@ -292,12 +292,16 @@ func TestResultDeliveryFailureAfterWritePropagates(t *testing.T) {
 }
 func TestOutputRevisionMismatchReconcilesAndReadsAgain(t *testing.T) {
 	f := &fakeLocal{version: "0.8.0", checked: true, revision: 42}
-	e, _ := newEngine(t, f)
+	e, first := newEngine(t, f)
 	published := 0
-	e.SetStatePublisher(func(snapshot protocol.InstanceSnapshot) error {
+	e.SetStatePublisher(func(protocol.InstanceSnapshot) error {
+		t.Fatal("revision-only reconciliation published a full snapshot")
+		return nil
+	})
+	e.SetDeltaPublisher(func(delta protocol.StateDelta) error {
 		published++
-		if snapshot.Agents[0].HerdrInputRevision != 43 {
-			t.Errorf("reconciled revision = %d", snapshot.Agents[0].HerdrInputRevision)
+		if delta.Epoch != first.EffectiveEpoch() || delta.Sequence != 1 || len(delta.Changes) != 1 || delta.Changes[0].Agent.HerdrInputRevision != 43 || delta.Changes[0].Agent.EffectiveGeneration() != 2 {
+			t.Errorf("reconciled delta = %#v", delta)
 		}
 		return nil
 	})
@@ -321,6 +325,21 @@ func TestUnchangedPeriodicReconciliationPreservesEpoch(t *testing.T) {
 	}
 	if first.EffectiveEpoch() != second.EffectiveEpoch() {
 		t.Fatalf("unchanged reconciliation rotated epoch: %s -> %s", first.EffectiveEpoch(), second.EffectiveEpoch())
+	}
+}
+func TestCheckedRevisionReconciliationPreservesEpoch(t *testing.T) {
+	f := &fakeLocal{version: "0.7.3-checked.1", checked: true, revision: 42}
+	e, first := newEngine(t, f)
+	f.revision = 43
+	second, err := e.Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.EffectiveEpoch() != second.EffectiveEpoch() {
+		t.Fatalf("revision-only reconciliation rotated epoch: %s -> %s", first.EffectiveEpoch(), second.EffectiveEpoch())
+	}
+	if second.Sequence != 1 || second.Agents[0].HerdrInputRevision != 43 || second.Agents[0].EffectiveGeneration() != 2 {
+		t.Fatalf("revision-only reconciliation state = %#v", second)
 	}
 }
 func TestDaemonSupportsMultipleConfiguredInstances(t *testing.T) {

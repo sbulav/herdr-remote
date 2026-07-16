@@ -236,15 +236,27 @@ func (d *Daemon) runOnce(ctx context.Context, offerInventory bool, welcomed func
 	for _, engine := range d.engines {
 		engine := engine
 		go func() {
-			errc <- engine.RunReconciliation(runCtx, func(s protocol.InstanceSnapshot) error {
-				b, err := protocol.MarshalEnvelope(1, "state.snapshot", s)
-				if err != nil {
-					return err
-				}
-				c, cancel := context.WithTimeout(runCtx, 2*time.Second)
-				defer cancel()
-				return q.Put(c, b)
-			})
+			errc <- engine.RunReconciliation(
+				runCtx,
+				func(s protocol.InstanceSnapshot) error {
+					b, err := protocol.MarshalEnvelope(1, "state.snapshot", s)
+					if err != nil {
+						return err
+					}
+					c, cancel := context.WithTimeout(runCtx, 2*time.Second)
+					defer cancel()
+					return q.Put(c, b)
+				},
+				func(delta protocol.StateDelta) error {
+					b, err := protocol.MarshalEnvelope(1, "state.delta", delta)
+					if err != nil {
+						return err
+					}
+					c, cancel := context.WithTimeout(runCtx, 2*time.Second)
+					defer cancel()
+					return q.Put(c, b)
+				},
+			)
 		}()
 		go func() {
 			t := time.NewTicker(time.Second)

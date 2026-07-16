@@ -145,6 +145,7 @@ func (c *UnixClient) Subscribe(ctx context.Context, specs []SubscriptionSpec) (*
 	}
 	events := make(chan Event, 64)
 	errs := make(chan error, 1)
+	var intentionallyClosed atomic.Bool
 	go func() {
 		defer close(events)
 		defer close(errs)
@@ -152,7 +153,7 @@ func (c *UnixClient) Subscribe(ctx context.Context, specs []SubscriptionSpec) (*
 		for {
 			line, err := readBufferedLine(reader)
 			if err != nil {
-				if !errors.Is(err, io.EOF) && ctx.Err() == nil {
+				if !errors.Is(err, io.EOF) && ctx.Err() == nil && !intentionallyClosed.Load() {
 					errs <- err
 				}
 				return
@@ -175,7 +176,10 @@ func (c *UnixClient) Subscribe(ctx context.Context, specs []SubscriptionSpec) (*
 			}
 		}
 	}()
-	return &Subscription{Events: events, Errors: errs, close: conn.Close}, nil
+	return &Subscription{Events: events, Errors: errs, close: func() error {
+		intentionallyClosed.Store(true)
+		return conn.Close()
+	}}, nil
 }
 
 func readLine(r io.Reader) ([]byte, error) {
