@@ -107,12 +107,16 @@ func (h *Hub) notify(kind string, v any) {
 }
 
 func (h *Hub) Snapshot(sessionID, stateEpoch string) protocol.SessionSnapshot {
-	out := protocol.SessionSnapshot{SessionID: sessionID, StateEpoch: stateEpoch, Sequence: 0, ServerTime: time.Now().UTC().Format(time.RFC3339Nano)}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	out := protocol.SessionSnapshot{SessionID: sessionID, StateEpoch: stateEpoch, Sequence: 0, ServerTime: time.Now().UTC().Format(time.RFC3339Nano), Hosts: make([]protocol.HostSnapshot, 0, len(h.hosts))}
 	for _, host := range h.hosts {
 		copy := host
-		copy.Instances = append([]protocol.BrowserInstance(nil), host.Instances...)
+		copy.Instances = append([]protocol.BrowserInstance{}, host.Instances...)
+		for i := range copy.Instances {
+			copy.Instances[i].Capabilities = append([]string{}, copy.Instances[i].Capabilities...)
+			copy.Instances[i].Agents = append([]protocol.Agent{}, copy.Instances[i].Agents...)
+		}
 		out.Hosts = append(out.Hosts, copy)
 	}
 	return out
@@ -804,7 +808,7 @@ func projectAgent(a protocol.Agent, epoch string) protocol.Agent {
 	return protocol.Agent{TerminalID: a.TerminalID, Agent: a.Agent, DisplayName: a.DisplayName, Status: a.Status, Project: a.Project, AgentGeneration: a.EffectiveGeneration(), HerdrInputRevision: a.HerdrInputRevision, ConnectorEpoch: epoch}
 }
 func projectInstance(src protocol.InstanceSnapshot) protocol.BrowserInstance {
-	i := protocol.BrowserInstance{InstanceID: src.InstanceID, ConnectorEpoch: src.EffectiveEpoch(), HerdrVersion: src.HerdrVersion, HerdrProtocol: src.HerdrProtocol, Status: src.Status, Capabilities: append([]string(nil), src.Capabilities...)}
+	i := protocol.BrowserInstance{InstanceID: src.InstanceID, ConnectorEpoch: src.EffectiveEpoch(), HerdrVersion: src.HerdrVersion, HerdrProtocol: src.HerdrProtocol, Status: src.Status, Capabilities: append([]string{}, src.Capabilities...), Agents: make([]protocol.Agent, 0, len(src.Agents))}
 	for _, a := range src.Agents {
 		i.Agents = append(i.Agents, projectAgent(a, src.EffectiveEpoch()))
 	}

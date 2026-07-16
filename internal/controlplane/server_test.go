@@ -1147,6 +1147,8 @@ func TestBrowserSnapshotOmitsConnectorOnlyInstanceFields(t *testing.T) {
 		Status:      "connected",
 		Instances:   []protocol.BrowserInstance{projectInstance(instance)},
 	}
+	disconnectedHostID := "019f64ca-1000-7000-8000-000000000003"
+	hub.hosts[disconnectedHostID] = protocol.HostSnapshot{HostID: disconnectedHostID, DisplayName: "disconnected", Status: "disconnected"}
 	frame, err := protocol.MarshalEnvelope(1, "session.snapshot", hub.Snapshot(mustTestID(), mustTestID()))
 	if err != nil {
 		t.Fatal(err)
@@ -1154,17 +1156,32 @@ func TestBrowserSnapshotOmitsConnectorOnlyInstanceFields(t *testing.T) {
 	var envelope struct {
 		Body struct {
 			Hosts []struct {
-				Instances []map[string]json.RawMessage `json:"instances"`
+				HostID    string          `json:"host_id"`
+				Instances json.RawMessage `json:"instances"`
 			} `json:"hosts"`
 		} `json:"body"`
 	}
 	if err := json.Unmarshal(frame, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if len(envelope.Body.Hosts) != 1 || len(envelope.Body.Hosts[0].Instances) != 1 {
+	if len(envelope.Body.Hosts) != 2 {
 		t.Fatalf("browser snapshot instances = %#v", envelope.Body.Hosts)
 	}
-	got := envelope.Body.Hosts[0].Instances[0]
+	var instances []map[string]json.RawMessage
+	for _, host := range envelope.Body.Hosts {
+		if string(host.Instances) == "null" {
+			t.Fatalf("browser host %s has null instances", host.HostID)
+		}
+		if host.HostID == hostID {
+			if err := json.Unmarshal(host.Instances, &instances); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(instances) != 1 {
+		t.Fatalf("connected host instances = %#v", instances)
+	}
+	got := instances[0]
 	want := []string{"agents", "capabilities", "connector_epoch", "herdr_protocol", "herdr_version", "instance_id", "status"}
 	if len(got) != len(want) {
 		t.Fatalf("browser instance fields = %#v", got)
@@ -1173,6 +1190,9 @@ func TestBrowserSnapshotOmitsConnectorOnlyInstanceFields(t *testing.T) {
 		if _, ok := got[name]; !ok {
 			t.Fatalf("browser instance missing %q: %#v", name, got)
 		}
+	}
+	if string(got["agents"]) != "[]" {
+		t.Fatalf("browser instance agents = %s", got["agents"])
 	}
 }
 
