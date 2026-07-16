@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { subscribePush, reconcilePush, testPush, unsubscribePush } from '../api/push';
-import { bootstrapSession, logout, type SessionBootstrap } from '../api/session';
+import { bootstrapSession, logout, navigateToLogout, type SessionBootstrap } from '../api/session';
 import { ApiError } from '../api/http';
 import { useControlPlane, type ControlPlane } from '../connection/useControlPlane';
 import type { AgentStatus, KeyName, Operation, Target } from '../protocol/types';
 import { listAgents, targetKey, type AgentView, type BrowserState } from '../state/reducer';
+import { pushSynchronizationSupported } from '../push/synchronizationLock';
+import { pendingReplacementStore } from '../push/pendingReplacement';
 
 const STATUS_ORDER: Array<{ title: string; statuses: AgentStatus[] }> = [
   { title: 'Needs input', statuses: ['blocked'] },
@@ -24,30 +26,50 @@ const RESULT_TEXT: Record<string, string> = {
 };
 
 export function App() {
-  const [session, setSession] = useState<SessionBootstrap | null>(null);
+  const [session, setSession] = useState<SessionBootstrap | 'signed-out' | null>(null);
   const [sessionError, setSessionError] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const loadSession = useCallback(async () => {
-    setSessionError(false);
-    try {
-      setSession(await bootstrapSession());
-    } catch (error) {
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-        setSession({ authenticated: false, operator: null, push_public_key: null });
-        return;
+  const sessionRequestRef = useRef<Promise<boolean> | null>(null);
+  const loggingOutRef = useRef(false);
+  const loadSession = useCallback((): Promise<boolean> => {
+    if (loggingOutRef.current) return Promise.resolve(false);
+    if (sessionRequestRef.current) return sessionRequestRef.current;
+    const request = (async () => {
+      setSessionError(false);
+      try {
+        const next = await bootstrapSession();
+        if (loggingOutRef.current) return false;
+        setSession(next);
+        return true;
+      } catch (error) {
+        if (loggingOutRef.current) return false;
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setSession('signed-out');
+          return false;
+        }
+        setSession(null);
+        setSessionError(true);
+        return false;
       }
-      setSessionError(true);
-    }
+    })();
+    sessionRequestRef.current = request;
+    void request.finally(() => {
+      if (sessionRequestRef.current === request) sessionRequestRef.current = null;
+    });
+    return request;
   }, []);
   const handleUnauthorized = useCallback(() => {
-    setSession({ authenticated: false, operator: null, push_public_key: null });
+    if (loggingOutRef.current) return;
+    setSession('signed-out');
     void loadSession();
   }, [loadSession]);
-  const control = useControlPlane(Boolean(session?.authenticated), handleUnauthorized);
+  const control = useControlPlane(Boolean(session && session !== 'signed-out'), handleUnauthorized, loadSession);
 
   useEffect(() => void loadSession(), [loadSession]);
   useEffect(() => {
-    const refresh = () => void loadSession();
+    const refresh = () => {
+      if (!loggingOutRef.current) void loadSession();
+    };
     window.addEventListener('herdr:push-refresh', refresh);
     return () => window.removeEventListener('herdr:push-refresh', refresh);
   }, [loadSession]);
@@ -61,16 +83,22 @@ export function App() {
   if (!session) {
     return <main className="centered"><p role="status">Checking your session…</p></main>;
   }
-  if (!session.authenticated) {
+  if (session === 'signed-out') {
     return <SignedOut />;
   }
 
   const handleLogout = async () => {
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
+    const logoutURL = session.logout_url;
+    control.stop();
+    setSession('signed-out');
     try {
       await logout();
-      setSession({ authenticated: false, operator: null, push_public_key: null });
     } catch {
-      setSessionError(true);
+      // Upstream logout must not depend on local session cleanup succeeding.
+    } finally {
+      navigateToLogout(logoutURL);
     }
   };
 
@@ -80,7 +108,7 @@ export function App() {
       <header className="app-header">
         <img src="/icon.svg" alt="" width="36" height="36" />
         <div className="brand"><strong>Herdr Remote</strong><span>Enterprise control</span></div>
-        <span className="operator">{session.operator?.display_name}</span>
+        <span className="operator">{session.operator.display_name}</span>
         <button className="quiet-button" type="button" onClick={() => void handleLogout()}>Log out</button>
       </header>
       <StatusBanners state={control.state} requestRefresh={() => control.requestResync()} />
@@ -286,31 +314,65 @@ function AgentDetail({ view, control, onBack }: { view: AgentView; control: Cont
   );
 }
 
-function PushSettings({ publicKey }: { publicKey: string | null }) {
+export function PushSettings({ publicKey }: { publicKey: string | null }) {
   const [supported, setSupported] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [synchronizationUnavailable, setSynchronizationUnavailable] = useState(false);
+  const [removablePushState, setRemovablePushState] = useState(false);
+  const reconciliationGeneration = useRef(0);
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = Boolean(window.matchMedia?.('(display-mode: standalone)')?.matches) || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
 
   useEffect(() => {
-    const available = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && Boolean(publicKey);
+    const generation = ++reconciliationGeneration.current;
+    let cancelled = false;
+    const pushManagerAvailable = 'serviceWorker' in navigator && 'PushManager' in window;
+    const browserPushAvailable = pushManagerAvailable && 'Notification' in window;
+    const lockAvailable = pushSynchronizationSupported();
+    const available = browserPushAvailable && lockAvailable && Boolean(publicKey);
     setSupported(available);
-    if (!available) return;
-    void navigator.serviceWorker.ready
-      .then((registration) => reconcilePush(registration))
-      .then((value) => setSubscribed(value.subscribed))
-      .catch(() => setMessage('Push status could not be reconciled.'));
+    setSynchronizationUnavailable(pushManagerAvailable && !lockAvailable);
+    setRemovablePushState(false);
+    setMessage(null);
+    if (!pushManagerAvailable) {
+      setSubscribed(false);
+      return () => { cancelled = true; };
+    }
+    void (async () => {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const [local, pending] = await Promise.allSettled([
+          registration.pushManager.getSubscription(),
+          pendingReplacementStore.load(),
+        ]);
+        if (cancelled || reconciliationGeneration.current !== generation) return;
+        setRemovablePushState(
+          (local.status === 'fulfilled' && local.value !== null)
+          || (pending.status === 'fulfilled' && pending.value.source_endpoints.length > 0),
+        );
+        if (!available) {
+          setSubscribed(false);
+          return;
+        }
+        const value = await reconcilePush(registration, publicKey!);
+        if (cancelled || reconciliationGeneration.current !== generation) return;
+        setSubscribed(value.subscribed);
+        setRemovablePushState(value.subscribed);
+      } catch {
+        if (!cancelled && reconciliationGeneration.current === generation && available) setMessage('Push status could not be reconciled.');
+      }
+    })();
+    return () => { cancelled = true; };
   }, [publicKey]);
 
-  const run = async (task: (registration: ServiceWorkerRegistration) => Promise<void>, success: string) => {
+  const run = async (task: (registration: ServiceWorkerRegistration) => Promise<string>) => {
     setBusy(true);
     setMessage(null);
     try {
       const registration = await navigator.serviceWorker.ready;
-      await task(registration);
-      setMessage(success);
+      setMessage(await task(registration));
     } catch {
       setMessage('The notification request did not complete.');
     } finally {
@@ -322,13 +384,22 @@ function PushSettings({ publicKey }: { publicKey: string | null }) {
     <details>
       <summary>Notifications</summary>
       {ios && !standalone && <p className="ios-guidance">On iPhone or iPad, use Share → Add to Home Screen before enabling push notifications.</p>}
-      {!supported ? <p>Push notifications are not available in this browser or deployment.</p> : subscribed ? (
+      {!supported ? (
+        <>
+          <p>{synchronizationUnavailable ? 'Notifications require Web Locks support in this browser.' : 'Push notifications are not available in this browser or deployment.'}</p>
+          {removablePushState && (
+            <button type="button" disabled={busy} onClick={() => void run(async (registration) => { await unsubscribePush(registration); setSubscribed(false); setRemovablePushState(false); return 'Notifications are off.'; })}>Turn off existing notifications</button>
+          )}
+        </>
+      ) : subscribed ? (
         <div className="notification-actions">
-          <button type="button" disabled={busy} onClick={() => void run(async () => testPush(), 'A generic test notification was requested.')}>Send test</button>
-          <button type="button" disabled={busy} onClick={() => void run(async (registration) => { await unsubscribePush(registration); setSubscribed(false); }, 'Notifications are off.')}>Turn off</button>
+          <button type="button" disabled={busy} onClick={() => void run(async () => await testPush() ? 'A generic test notification was requested.' : 'Push is disabled for this deployment.')}>Send test</button>
+          <button type="button" disabled={busy} onClick={() => void run(async (registration) => { await unsubscribePush(registration); setSubscribed(false); setRemovablePushState(false); return 'Notifications are off.'; })}>Turn off existing notifications</button>
         </div>
+      ) : removablePushState ? (
+        <button type="button" disabled={busy} onClick={() => void run(async (registration) => { await unsubscribePush(registration); setSubscribed(false); setRemovablePushState(false); return 'Notifications are off.'; })}>Turn off existing notifications</button>
       ) : (
-        <button type="button" disabled={busy || !publicKey} onClick={() => void run(async (registration) => { await subscribePush(registration, publicKey!); setSubscribed(true); }, 'Notifications are on.')}>Enable notifications</button>
+        <button type="button" disabled={busy || !publicKey} onClick={() => void run(async (registration) => { await subscribePush(registration, publicKey!); setSubscribed(true); return 'Notifications are on.'; })}>Enable notifications</button>
       )}
       {message && <p role="status">{message}</p>}
       <p className="muted">Notifications contain only a generic update hint. Open the app to load current state.</p>

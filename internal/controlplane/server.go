@@ -24,20 +24,27 @@ import (
 	"github.com/dcolinmorgan/herdr-remote/internal/enrollment"
 	"github.com/dcolinmorgan/herdr-remote/internal/protocol"
 	"github.com/dcolinmorgan/herdr-remote/internal/push"
+	"github.com/dcolinmorgan/herdr-remote/internal/pushendpoint"
 	"github.com/dcolinmorgan/herdr-remote/internal/store"
 )
 
 type ServerConfig struct {
-	Origin, StaticDir string
-	Proxy             *auth.Proxy
-	Sessions          *auth.Sessions
-	Store             *store.Store
-	Enrollment        *enrollment.Service
-	Push              *push.Service
-	OperatorSubject   string
-	Logger            *slog.Logger
-	Metrics           *Metrics
+	Origin, StaticDir    string
+	UpstreamLogoutURL    string
+	Proxy                *auth.Proxy
+	Sessions             *auth.Sessions
+	Store                *store.Store
+	Enrollment           *enrollment.Service
+	Push                 *push.Service
+	VAPIDPublicKey       string
+	OperatorSubject      string
+	Logger               *slog.Logger
+	Metrics              *Metrics
+	SessionCheckInterval time.Duration
 }
+
+const browserUnauthorizedCloseCode websocket.StatusCode = 4401
+
 type Server struct {
 	cfg         ServerConfig
 	hub         *Hub
@@ -77,11 +84,26 @@ func NewServer(c ServerConfig, h *Hub) (*Server, error) {
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return nil, errors.New("origin must be an exact HTTPS origin")
 	}
+	logoutURL, err := url.Parse(c.UpstreamLogoutURL)
+	if err != nil || len(c.UpstreamLogoutURL) > 2048 || logoutURL.Scheme != "https" || logoutURL.Host == "" || logoutURL.User != nil || logoutURL.Fragment != "" || logoutURL.Opaque != "" {
+		return nil, errors.New("upstream logout URL must be an absolute HTTPS URL without userinfo or fragment")
+	}
 	if c.Logger == nil {
 		c.Logger = slog.Default()
 	}
 	if c.Metrics == nil {
 		c.Metrics = &Metrics{}
+	}
+	if c.SessionCheckInterval <= 0 {
+		c.SessionCheckInterval = 5 * time.Second
+	}
+	if c.Push == nil && c.VAPIDPublicKey != "" {
+		return nil, errors.New("VAPID public key requires push service")
+	}
+	if c.Push != nil {
+		if c.OperatorSubject == "" || c.Push.ValidateConfiguration(c.VAPIDPublicKey) != nil {
+			return nil, errors.New("push service requires operator and valid VAPID public key")
+		}
 	}
 	s := &Server{cfg: c, hub: h, pushWorkers: make(chan struct{}, 4)}
 	if c.StaticDir != "" {
@@ -103,7 +125,7 @@ func NewServer(c ServerConfig, h *Hub) (*Server, error) {
 			}
 			go func() {
 				defer func() { <-s.pushWorkers }()
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), c.Push.FanoutTimeout(store.MaxPushSubscriptionsPerOperator))
 				defer cancel()
 				if err := c.Push.Notify(ctx, c.OperatorSubject, "agent_state_changed"); err != nil {
 					c.Logger.Warn("web push delivery failed", "error", "delivery failed")
@@ -121,16 +143,22 @@ func (s *Server) BrowserHandler() http.Handler {
 	public.HandleFunc("/metrics", s.metrics)
 	public.HandleFunc("/v1/enroll", s.enroll)
 	protected := http.NewServeMux()
-	protected.HandleFunc("/api/v1/session", s.cfg.Sessions.Handler)
+	protected.HandleFunc("/api/v1/session", s.session)
+	protected.HandleFunc("/api/v1/csrf", s.csrf)
+	protected.HandleFunc("/auth/logout", s.logout)
 	protected.HandleFunc("/v1/browser/ws", s.browserWS)
 	protected.HandleFunc("/api/v1/actions/", s.actionStatus)
 	protected.HandleFunc("/api/v1/enrollments", s.createEnrollment)
 	protected.HandleFunc("/api/v1/hosts/", s.hostAction)
 	protected.HandleFunc("/api/v1/push/subscriptions", s.pushSubscriptions)
+	protected.HandleFunc("/api/v1/push/subscriptions/reconcile", s.reconcilePushSubscription)
+	protected.HandleFunc("/api/v1/push/subscriptions/replace", s.replacePushSubscription)
+	protected.HandleFunc("/api/v1/push/test", s.testPush)
 	if s.cfg.StaticDir != "" {
 		protected.Handle("/", s.static())
 	}
 	public.Handle("/api/", s.cfg.Proxy.Middleware(protected))
+	public.Handle("/auth/", s.cfg.Proxy.Middleware(protected))
 	public.Handle("/v1/browser/", s.cfg.Proxy.Middleware(protected))
 	public.Handle("/", s.cfg.Proxy.Middleware(protected))
 	return securityHeaders(public)
@@ -142,6 +170,79 @@ func (s *Server) ConnectorHandler() http.Handler {
 	m.HandleFunc("/v1/connectors/ws", s.hub.ConnectorHandler)
 	m.HandleFunc("/v1/connectors/rotate", s.rotate)
 	return m
+}
+
+func (s *Server) session(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	identity, ok := auth.IdentityFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if _, err := s.cfg.Sessions.Get(r); err != nil {
+		if _, err := s.cfg.Sessions.Issue(w, identity); err != nil {
+			http.Error(w, "internal", http.StatusInternalServerError)
+			return
+		}
+	}
+	var publicKey *string
+	if s.cfg.VAPIDPublicKey != "" {
+		value := s.cfg.VAPIDPublicKey
+		publicKey = &value
+	}
+	jsonResponse(w, http.StatusOK, struct {
+		Authenticated bool `json:"authenticated"`
+		Operator      struct {
+			DisplayName string `json:"display_name"`
+		} `json:"operator"`
+		PushPublicKey *string `json:"push_public_key"`
+		LogoutURL     string  `json:"logout_url"`
+	}{Authenticated: true, Operator: struct {
+		DisplayName string `json:"display_name"`
+	}{DisplayName: identity.Subject}, PushPublicKey: publicKey, LogoutURL: s.cfg.UpstreamLogoutURL})
+}
+
+func (s *Server) csrf(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	session, err := s.cfg.Sessions.Get(r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	jsonResponse(w, http.StatusOK, struct {
+		Token string `json:"token"`
+	}{Token: session.CSRF})
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireOrigin(w, r) {
+		return
+	}
+	session, err := s.cfg.Sessions.Get(r)
+	if err != nil || !s.cfg.Sessions.RequireCSRF(r, session) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	var in struct{}
+	if strictBody(r, &in) != nil {
+		http.Error(w, "invalid", http.StatusBadRequest)
+		return
+	}
+	s.cfg.Sessions.Delete(session.ID)
+	s.cfg.Sessions.ClearCookie(w)
+	jsonResponse(w, http.StatusOK, struct {
+		LogoutURL string `json:"logout_url"`
+	}{LogoutURL: s.cfg.UpstreamLogoutURL})
 }
 
 func (s *Server) browserWS(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +263,37 @@ func (s *Server) browserWS(w http.ResponseWriter, r *http.Request) {
 	conn.SetReadLimit(protocol.MaxFrameBytes)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+	var unauthorizedOnce sync.Once
+	closeUnauthorized := func() {
+		unauthorizedOnce.Do(func() {
+			_ = conn.Close(browserUnauthorizedCloseCode, "session unauthorized")
+			cancel()
+		})
+	}
+	revoked, unwatch, err := s.cfg.Sessions.Watch(session)
+	if err != nil {
+		closeUnauthorized()
+		return
+	}
+	defer unwatch()
+	go func() {
+		ticker := time.NewTicker(s.cfg.SessionCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-revoked:
+				closeUnauthorized()
+				return
+			case <-ticker.C:
+				if s.cfg.Sessions.Valid(session) != nil {
+					closeUnauthorized()
+					return
+				}
+			}
+		}
+	}()
 	initialEpoch, _ := protocol.NewUUIDv7()
 	projection := &browserProjection{epoch: initialEpoch}
 	sessionID, _ := protocol.NewUUIDv7()
@@ -171,6 +303,9 @@ func (s *Server) browserWS(w http.ResponseWriter, r *http.Request) {
 		closeOnce.Do(func() { cancel(); _ = conn.Close(websocket.StatusTryAgainLater, "priority delivery unavailable") })
 	}
 	enqueue := func(typ string, body any) bool {
+		if ctx.Err() != nil || s.cfg.Sessions.Valid(session) != nil {
+			return false
+		}
 		b, err := protocol.MarshalEnvelope(1, typ, body)
 		if err != nil {
 			failConnection()
@@ -186,6 +321,9 @@ func (s *Server) browserWS(w http.ResponseWriter, r *http.Request) {
 		return true
 	}
 	enqueueOutput := func(id string, body any) bool {
+		if ctx.Err() != nil || s.cfg.Sessions.Valid(session) != nil {
+			return false
+		}
 		b, err := protocol.MarshalEnvelope(1, "output.snapshot", body)
 		if err != nil {
 			failConnection()
@@ -198,6 +336,9 @@ func (s *Server) browserWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	unsub := s.hub.Subscribe(func(kind string, v any) {
+		if s.cfg.Sessions.Valid(session) != nil {
+			return
+		}
 		switch kind {
 		case "state.delta":
 			event := v.(StateEvent)
@@ -240,6 +381,10 @@ func (s *Server) browserWS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			wctx, c := context.WithTimeout(ctx, 10*time.Second)
+			if s.cfg.Sessions.Valid(session) != nil {
+				c()
+				return
+			}
 			err = conn.Write(wctx, websocket.MessageText, b)
 			c()
 			if err != nil {
@@ -276,12 +421,12 @@ func (s *Server) browserWS(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
+		if s.cfg.Sessions.Check(session) != nil {
+			closeUnauthorized()
+			return
+		}
 		switch m := msg.(type) {
 		case *protocol.BrowserActionRequest:
-			if s.cfg.Sessions.Check(session) != nil {
-				s.protocolError(enqueue, sessionID, env.MessageID, "UNAUTHORIZED")
-				return
-			}
 			if m.SessionID != sessionID {
 				go s.rejectAction(enqueue, sessionID, *m, "UNAUTHORIZED")
 				continue
@@ -574,6 +719,10 @@ func (s *Server) hostAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) pushSubscriptions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
 	if !s.requireOrigin(w, r) {
 		return
 	}
@@ -583,7 +732,11 @@ func (s *Server) pushSubscriptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.Method {
-	case "POST":
+	case http.MethodPost:
+		if s.cfg.Push == nil {
+			jsonResponse(w, http.StatusServiceUnavailable, map[string]bool{"enabled": false})
+			return
+		}
 		var in struct {
 			Endpoint string `json:"endpoint"`
 			Keys     struct {
@@ -608,19 +761,167 @@ func (s *Server) pushSubscriptions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.WriteHeader(204)
-	case "DELETE":
+	case http.MethodDelete:
 		var in struct {
-			Endpoint string `json:"endpoint"`
+			Endpoints []string `json:"endpoints"`
 		}
-		if strictBody(r, &in) != nil {
+		if strictBody(r, &in) != nil || len(in.Endpoints) < 1 || len(in.Endpoints) > store.MaxPushDeletionEndpoints {
 			http.Error(w, "invalid", 400)
 			return
 		}
-		_ = s.cfg.Store.DeletePush(r.Context(), in.Endpoint)
+		seen := make(map[string]struct{}, len(in.Endpoints))
+		for _, endpoint := range in.Endpoints {
+			if !validPushEndpoint(endpoint) || len(endpoint) > 2048 {
+				http.Error(w, "invalid", http.StatusBadRequest)
+				return
+			}
+			if _, exists := seen[endpoint]; exists {
+				http.Error(w, "invalid", http.StatusBadRequest)
+				return
+			}
+			seen[endpoint] = struct{}{}
+		}
+		if err := s.cfg.Store.DeletePushEndpointsForSubject(r.Context(), session.Identity.Subject, in.Endpoints); err != nil {
+			if errors.Is(err, store.ErrInvalidPushSubscription) {
+				http.Error(w, "invalid", http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "internal", http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(204)
-	default:
-		http.Error(w, "method", 405)
 	}
+}
+func (s *Server) reconcilePushSubscription(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireOrigin(w, r) {
+		return
+	}
+	session, err := s.cfg.Sessions.Get(r)
+	if err != nil || !s.cfg.Sessions.RequireCSRF(r, session) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	var in struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if strictBody(r, &in) != nil || !validPushEndpoint(in.Endpoint) || len(in.Endpoint) > 2048 {
+		http.Error(w, "invalid", http.StatusBadRequest)
+		return
+	}
+	subscribed, err := s.cfg.Store.HasPushSubscription(r.Context(), session.Identity.Subject, in.Endpoint)
+	if err != nil {
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]bool{"subscribed": subscribed})
+}
+func (s *Server) replacePushSubscription(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireOrigin(w, r) {
+		return
+	}
+	session, err := s.cfg.Sessions.Get(r)
+	if err != nil || !s.cfg.Sessions.RequireCSRF(r, session) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if s.cfg.Push == nil {
+		jsonResponse(w, http.StatusServiceUnavailable, map[string]bool{"enabled": false})
+		return
+	}
+	var in struct {
+		SourceEndpoints []string `json:"source_endpoints"`
+		Subscription    struct {
+			Endpoint string `json:"endpoint"`
+			Keys     struct {
+				P256DH string `json:"p256dh"`
+				Auth   string `json:"auth"`
+			} `json:"keys"`
+		} `json:"subscription"`
+	}
+	if strictBody(r, &in) != nil {
+		http.Error(w, "invalid", http.StatusBadRequest)
+		return
+	}
+	validSources := len(in.SourceEndpoints) >= 1 && len(in.SourceEndpoints) <= store.MaxPushReplacementSources
+	seenSources := make(map[string]struct{}, len(in.SourceEndpoints))
+	for _, endpoint := range in.SourceEndpoints {
+		if !validPushEndpoint(endpoint) || len(endpoint) > 2048 {
+			validSources = false
+		}
+		if _, exists := seenSources[endpoint]; exists {
+			validSources = false
+		}
+		seenSources[endpoint] = struct{}{}
+	}
+	if !validSources || !validPushEndpoint(in.Subscription.Endpoint) || len(in.Subscription.Endpoint) > 2048 || len(in.Subscription.Keys.P256DH) < 1 || len(in.Subscription.Keys.P256DH) > 512 || len(in.Subscription.Keys.Auth) < 1 || len(in.Subscription.Keys.Auth) > 256 || len(r.UserAgent()) > 256 {
+		http.Error(w, "invalid", http.StatusBadRequest)
+		return
+	}
+	replacement := store.PushSubscription{Subject: session.Identity.Subject, Endpoint: in.Subscription.Endpoint, P256DH: in.Subscription.Keys.P256DH, Auth: in.Subscription.Keys.Auth, UserAgent: r.UserAgent()}
+	if err := s.cfg.Store.ReplacePush(r.Context(), session.Identity.Subject, in.SourceEndpoints, replacement); err != nil {
+		switch {
+		case errors.Is(err, store.ErrInvalidPushSubscription):
+			http.Error(w, "invalid", http.StatusBadRequest)
+		case errors.Is(err, store.ErrPushOwnership):
+			http.Error(w, "forbidden", http.StatusForbidden)
+		case errors.Is(err, store.ErrPushMissing):
+			http.Error(w, "missing", http.StatusNotFound)
+		case errors.Is(err, store.ErrPushConflict):
+			http.Error(w, "conflict", http.StatusConflict)
+		case errors.Is(err, store.ErrPushLimit):
+			http.Error(w, "push subscription limit reached", http.StatusConflict)
+		default:
+			http.Error(w, "internal", http.StatusInternalServerError)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+func (s *Server) testPush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireOrigin(w, r) {
+		return
+	}
+	session, err := s.cfg.Sessions.Get(r)
+	if err != nil || !s.cfg.Sessions.RequireCSRF(r, session) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	var in struct{}
+	if strictBody(r, &in) != nil {
+		http.Error(w, "invalid", http.StatusBadRequest)
+		return
+	}
+	if s.cfg.Push == nil {
+		jsonResponse(w, http.StatusOK, map[string]bool{"enabled": false})
+		return
+	}
+	select {
+	case s.pushWorkers <- struct{}{}:
+		defer func() { <-s.pushWorkers }()
+	default:
+		http.Error(w, "busy", http.StatusTooManyRequests)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.Push.FanoutTimeout(store.MaxPushSubscriptionsPerOperator))
+	defer cancel()
+	if err := s.cfg.Push.Notify(ctx, session.Identity.Subject, "test"); err != nil {
+		s.cfg.Logger.Warn("test web push delivery failed", "error", "delivery failed")
+		http.Error(w, "delivery failed", http.StatusBadGateway)
+		return
+	}
+	jsonResponse(w, http.StatusAccepted, map[string]bool{"enabled": true})
 }
 func (s *Server) requireOrigin(w http.ResponseWriter, r *http.Request) bool {
 	if r.Header.Get("Origin") != s.cfg.Origin {
@@ -719,8 +1020,8 @@ func jsonResponse(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func validPushEndpoint(raw string) bool {
-	u, err := url.Parse(raw)
-	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil
+	_, err := pushendpoint.Parse(raw)
+	return err == nil
 }
 func browserExcerpt(v string, already bool) (string, bool) {
 	r := []rune(v)

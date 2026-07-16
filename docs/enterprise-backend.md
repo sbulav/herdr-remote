@@ -26,17 +26,22 @@ The backend uses three direct dependencies:
 - `modernc.org/sqlite` provides durable SQLite storage without CGO. This keeps connector and control-plane builds portable.
 - `github.com/SherClockHolmes/webpush-go` implements VAPID signing and Web Push payload encryption. Non-2xx responses are never reported as success.
 
+Web Push delivery does not use the process proxy environment or the default HTTP client. Its dedicated transport accepts only HTTPS DNS endpoints on port 443, refuses redirects, rejects userinfo, fragments, and IP literals, and blocks loopback, private, link-local, multicast, unspecified, documentation, benchmarking, translation, and reserved IPv4/IPv6 ranges. It resolves once before request construction and again inside `DialContext`, then dials the validated IP directly while TLS still verifies the original hostname. This protects both newly registered subscriptions and legacy persisted rows without imposing a provider hostname allowlist.
+
 Prometheus output, TLS, certificate issuance, logging, HTTP, and the Herdr NDJSON client use the Go standard library.
 
 ## Control-plane configuration
 
 The control plane has no implicit production secrets. It reads the session secret, CA private key, TLS private key, and VAPID private key from files.
 
+When Web Push is enabled, startup decodes the VAPID private and public keys, derives the P-256 public point from the private scalar, requires an exact pair match, and validates the subscriber as an HTTPS or `mailto:` URI. Invalid or mismatched VAPID configuration prevents startup, so the session bootstrap never advertises an unusable key.
+
 ```bash
 controlplane \
   -browser-listen 127.0.0.1:8080 \
   -connector-listen :8443 \
   -origin https://herdr.example.com \
+  -upstream-logout-url 'https://id.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fherdr.example.com%2F' \
   -database /var/lib/herdr-controlplane/control.db \
   -static-dir /var/lib/herdr-controlplane/pwa \
   -session-secret-file /run/credentials/session-secret \
@@ -61,13 +66,15 @@ The reverse proxy must remove client-supplied copies and set exactly one value f
 
 The service accepts those headers only from loopback or `-trusted-proxy-cidrs`. Every value must exactly match its configured value. The proxy must terminate browser TLS and restrict direct access to `-browser-listen`.
 
+`-upstream-logout-url` is required and must be an absolute HTTPS URL without userinfo or a fragment. It should terminate the provider session and return the operator to an appropriate signed-out page. Local logout revokes the opaque application session first, then the PWA navigates to this configured URL.
+
 The connector listener requires a verified client certificate during the TLS handshake. Do not expose the browser listener on that port.
 
 Optional Web Push flags are `-vapid-public-key`, `-vapid-private-key-file`, and `-vapid-subscriber`. Push payloads contain only a random event ID and coarse event kind.
 
 ## Enrollment
 
-An authenticated operator creates an enrollment through `POST /api/v1/enrollments`. The request requires the HTTP-only session cookie and the `X-CSRF-Token` returned by `GET /api/v1/session`.
+An authenticated operator creates an enrollment through `POST /api/v1/enrollments`. The request requires the HTTP-only session cookie and the `X-CSRF-Token` returned by authenticated `GET /api/v1/csrf`. `GET /api/v1/session` returns only the operator display name and configured VAPID public key; it never exposes CSRF or OIDC claims.
 
 ```json
 {"display_name":"workstation"}

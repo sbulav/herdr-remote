@@ -4,7 +4,7 @@ import { clientsClaim } from 'workbox-core';
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { EventDeduplicator, parsePushPayload } from './push/payload';
-import { reconcileChangedPushSubscription } from './api/push';
+import { handlePushSubscriptionChange } from './push/subscriptionChange';
 
 declare let self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision?: string }> };
 
@@ -50,19 +50,7 @@ type SubscriptionChangeEvent = ExtendableEvent & {
 
 self.addEventListener('pushsubscriptionchange', ((event: SubscriptionChangeEvent) => {
   event.waitUntil((async () => {
-    let subscription = event.newSubscription;
-    const applicationServerKey = event.oldSubscription?.options.applicationServerKey;
-    if (!subscription && applicationServerKey) {
-      try {
-        subscription = await self.registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey,
-        });
-      } catch {
-        subscription = null;
-      }
-    }
-    await reconcileChangedPushSubscription(subscription);
+    await handlePushSubscriptionChange(self.registration, event.oldSubscription, event.newSubscription);
   })());
 }) as EventListener);
 

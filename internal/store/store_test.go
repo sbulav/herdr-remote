@@ -160,6 +160,9 @@ func TestPushSubscriptionBoundsAndPerOperatorLimit(t *testing.T) {
 		t.Fatalf("overflow push = %v", err)
 	}
 	invalid := []PushSubscription{{Subject: "other", Endpoint: "https://push.example/other", P256DH: strings.Repeat("k", 513), Auth: "auth"}, {Subject: "other", Endpoint: "https://push.example/other", P256DH: "key", Auth: strings.Repeat("a", 257)}, {Subject: "other", Endpoint: "https://push.example/" + strings.Repeat("e", 2049), P256DH: "key", Auth: "auth"}, {Subject: "other", Endpoint: "https://push.example/other", P256DH: "key", Auth: "auth", UserAgent: strings.Repeat("u", 257)}}
+	for _, endpoint := range []string{"https://127.0.0.1/push", "https://user@push.example/push", "https://push.example:8443/push", "https://push.example/push#fragment"} {
+		invalid = append(invalid, PushSubscription{Subject: "other", Endpoint: endpoint, P256DH: "key", Auth: "auth"})
+	}
 	for _, subscription := range invalid {
 		if err := s.UpsertPush(ctx, subscription); !errors.Is(err, ErrInvalidPushSubscription) {
 			t.Fatalf("invalid subscription accepted: %#v, %v", subscription, err)
@@ -198,6 +201,137 @@ func TestPushCleanupRemovesStaleSubscriptions(t *testing.T) {
 	}
 	if len(subscriptions) != 1 || subscriptions[0].Endpoint != "https://push.example/current" {
 		t.Fatalf("stale cleanup = %#v", subscriptions)
+	}
+}
+func TestPushReplacementIsAtomicAtLimitAndSubjectScoped(t *testing.T) {
+	s, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	for i := 0; i < MaxPushSubscriptionsPerOperator; i++ {
+		if err := s.UpsertPush(ctx, PushSubscription{Subject: "operator", Endpoint: fmt.Sprintf("https://push.example/device-%d", i), P256DH: "key", Auth: "auth"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sourceA := "https://push.example/device-0"
+	sourceB := "https://push.example/device-1"
+	target := PushSubscription{Subject: "operator", Endpoint: "https://push.example/current", P256DH: "new-key", Auth: "new-auth"}
+	sources := []string{"https://push.example/missing", sourceA, sourceB}
+	if err := s.ReplacePush(ctx, "operator", sources, target); err != nil {
+		t.Fatalf("replace at limit: %v", err)
+	}
+	for _, endpoint := range []string{sourceA, sourceB} {
+		exists, _ := s.HasPushSubscription(ctx, "operator", endpoint)
+		if exists {
+			t.Fatalf("same-subject source remained: %s", endpoint)
+		}
+	}
+	if exists, _ := s.HasPushSubscription(ctx, "operator", target.Endpoint); !exists {
+		t.Fatal("replacement target missing")
+	}
+
+	if err := s.UpsertPush(ctx, PushSubscription{Subject: "other", Endpoint: "https://push.example/other", P256DH: "key", Auth: "auth"}); err != nil {
+		t.Fatal(err)
+	}
+	stale := "https://push.example/stale-same-subject"
+	if err := s.UpsertPush(ctx, PushSubscription{Subject: "operator", Endpoint: stale, P256DH: "stale-key", Auth: "stale-auth"}); err != nil {
+		t.Fatal(err)
+	}
+	target.UserAgent = "updated-browser"
+	if err := s.ReplacePush(ctx, "operator", []string{sourceA, stale, "https://push.example/other"}, target); err != nil {
+		t.Fatalf("lost-response retry was not idempotent: %v", err)
+	}
+	if exists, _ := s.HasPushSubscription(ctx, "operator", stale); exists {
+		t.Fatal("idempotent target did not clean remaining same-subject source")
+	}
+	if exists, _ := s.HasPushSubscription(ctx, "other", "https://push.example/other"); !exists {
+		t.Fatal("replacement deleted another subject's source candidate")
+	}
+
+	conflicting := target
+	conflicting.Auth = "different-auth"
+	if err := s.ReplacePush(ctx, "operator", []string{sourceA}, conflicting); !errors.Is(err, ErrPushConflict) {
+		t.Fatalf("conflicting lost-response retry = %v", err)
+	}
+	if err := s.ReplacePush(ctx, "operator", []string{"https://push.example/other"}, PushSubscription{Subject: "operator", Endpoint: "https://push.example/missing-target", P256DH: "key", Auth: "auth"}); !errors.Is(err, ErrPushMissing) {
+		t.Fatalf("cross-subject-only sources leaked ownership: %v", err)
+	}
+	if err := s.ReplacePush(ctx, "operator", []string{sourceA}, PushSubscription{Subject: "operator", Endpoint: "https://push.example/other", P256DH: "key", Auth: "auth"}); !errors.Is(err, ErrPushOwnership) {
+		t.Fatalf("cross-subject new endpoint = %v", err)
+	}
+	if err := s.ReplacePush(ctx, "operator", []string{sourceA}, PushSubscription{Subject: "operator", Endpoint: "not-https", P256DH: "key", Auth: "auth"}); !errors.Is(err, ErrInvalidPushSubscription) {
+		t.Fatalf("invalid replacement = %v", err)
+	}
+	stillExists, _ := s.HasPushSubscription(ctx, "operator", target.Endpoint)
+	if !stillExists {
+		t.Fatal("invalid replacement did not roll back")
+	}
+	missingErr := s.ReplacePush(ctx, "operator", []string{"https://push.example/removed-by-cleanup"}, PushSubscription{Subject: "operator", Endpoint: "https://push.example/current-after-cleanup", P256DH: "key", Auth: "auth"})
+	if !errors.Is(missingErr, ErrPushMissing) {
+		t.Fatalf("missing replacement source was not distinguished from ownership: %v", missingErr)
+	}
+	invalidSources := [][]string{
+		nil,
+		{"https://push.example/duplicate", "https://push.example/duplicate"},
+		{"not-https"},
+		{strings.Repeat("x", 2049)},
+	}
+	overflow := make([]string, MaxPushReplacementSources+1)
+	for i := range overflow {
+		overflow[i] = fmt.Sprintf("https://push.example/overflow-%d", i)
+	}
+	invalidSources = append(invalidSources, overflow)
+	for _, invalid := range invalidSources {
+		if err := s.ReplacePush(ctx, "operator", invalid, target); !errors.Is(err, ErrInvalidPushSubscription) {
+			t.Fatalf("invalid sources accepted: %#v, %v", invalid, err)
+		}
+	}
+}
+func TestPushBulkDeleteIsBoundedAndSubjectScopedAtLimit(t *testing.T) {
+	s, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	endpoints := make([]string, MaxPushSubscriptionsPerOperator)
+	for index := range endpoints {
+		endpoints[index] = fmt.Sprintf("https://push.example/device-%02d", index)
+		if err := s.UpsertPush(ctx, PushSubscription{Subject: "operator", Endpoint: endpoints[index], P256DH: "key", Auth: "auth"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	foreign := "https://push.example/foreign"
+	if err := s.UpsertPush(ctx, PushSubscription{Subject: "other", Endpoint: foreign, P256DH: "key", Auth: "auth"}); err != nil {
+		t.Fatal(err)
+	}
+	requested := append([]string{}, endpoints[:MaxPushDeletionEndpoints-1]...)
+	requested = append(requested, foreign)
+	if err := s.DeletePushEndpointsForSubject(ctx, "operator", requested); err != nil {
+		t.Fatal(err)
+	}
+	subscriptions, err := s.PushSubscriptions(ctx, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subscriptions) != MaxPushSubscriptionsPerOperator-(MaxPushDeletionEndpoints-1) {
+		t.Fatalf("remaining subscriptions = %d", len(subscriptions))
+	}
+	if exists, err := s.HasPushSubscription(ctx, "other", foreign); err != nil || !exists {
+		t.Fatalf("foreign subscription changed: exists=%t err=%v", exists, err)
+	}
+	invalid := [][]string{
+		nil,
+		{endpoints[0], endpoints[0]},
+		append([]string{}, endpoints[:MaxPushDeletionEndpoints]...),
+	}
+	invalid[2] = append(invalid[2], "https://push.example/overflow")
+	for _, values := range invalid {
+		if err := s.DeletePushEndpointsForSubject(ctx, "operator", values); !errors.Is(err, ErrInvalidPushSubscription) {
+			t.Fatalf("invalid bulk delete accepted: %#v, %v", values, err)
+		}
 	}
 }
 func TestEnrollmentHostLimitIsTransactional(t *testing.T) {

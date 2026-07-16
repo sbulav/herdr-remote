@@ -11,6 +11,7 @@ let
   stateDir = "/var/lib/${stateDirectory}";
   vapidEnabled = cfg.vapid.publicKey != "";
   safeHttpsUrl = lib.types.strMatching "https://[^/@?#[:space:]]+(/[^?#[:space:]]*)?";
+  safeLogoutUrl = lib.types.strMatching "https://[^/@?#[:space:]]+([/?][^#[:space:]]*)?";
   boundedIdentity = lib.types.strMatching ".{1,256}";
 in
 {
@@ -59,6 +60,12 @@ in
       type = lib.types.strMatching "https://[^/@?#[:space:]]+";
       example = "https://herdr.example.com";
       description = "Exact HTTPS origin accepted for browser requests.";
+    };
+
+    upstreamLogoutUrl = lib.mkOption {
+      type = safeLogoutUrl;
+      example = "https://id.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fherdr.example.com%2F";
+      description = "Upstream OIDC HTTPS logout URL returned after local session revocation.";
     };
 
     database = lib.mkOption {
@@ -172,6 +179,8 @@ in
             cfg.connectorListen
             "-origin"
             cfg.origin
+            "-upstream-logout-url"
+            cfg.upstreamLogoutUrl
             "-database"
             cfg.database
             "-static-dir"

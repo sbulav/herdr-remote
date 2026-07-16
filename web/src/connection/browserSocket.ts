@@ -18,6 +18,8 @@ interface BrowserSocketCallbacks {
   onOpen(): void;
   onMessage(message: InboundMessage): boolean;
   onClose(offline: boolean): void;
+  onUnauthorized(): void;
+  revalidateSession(): Promise<boolean>;
   onProtocolFailure(): void;
 }
 
@@ -29,6 +31,9 @@ export class BrowserSocket {
   #attempt = 0;
   #stopped = true;
   #receivedSnapshot = false;
+  #lifecycle = 0;
+  #needsRevalidation = false;
+  #revalidation: Promise<boolean> | null = null;
 
   constructor(callbacks: BrowserSocketCallbacks, url = browserSocketUrl()) {
     this.#callbacks = callbacks;
@@ -38,6 +43,8 @@ export class BrowserSocket {
   start(): void {
     if (!this.#stopped) return;
     this.#stopped = false;
+    this.#lifecycle += 1;
+    this.#needsRevalidation = false;
     window.addEventListener('online', this.#handleOnline);
     window.addEventListener('offline', this.#handleOffline);
     this.#connect(false);
@@ -45,6 +52,9 @@ export class BrowserSocket {
 
   stop(): void {
     this.#stopped = true;
+    this.#lifecycle += 1;
+    this.#needsRevalidation = false;
+    this.#revalidation = null;
     window.removeEventListener('online', this.#handleOnline);
     window.removeEventListener('offline', this.#handleOffline);
     if (this.#timer !== null) window.clearTimeout(this.#timer);
@@ -55,6 +65,9 @@ export class BrowserSocket {
 
   refresh(): void {
     if (this.#stopped) return;
+    this.#lifecycle += 1;
+    this.#needsRevalidation = false;
+    this.#revalidation = null;
     if (this.#timer !== null) window.clearTimeout(this.#timer);
     this.#timer = null;
     this.#attempt = 0;
@@ -87,12 +100,25 @@ export class BrowserSocket {
       this.#callbacks.onOpen();
     });
     socket.addEventListener('message', (event: MessageEvent<unknown>) => this.#receive(socket, event.data));
-    socket.addEventListener('close', () => {
+    socket.addEventListener('close', (event: CloseEvent) => {
       if (socket !== this.#socket || this.#stopped) return;
       this.#socket = null;
+      if (event.code === 4401) {
+        this.#stopped = true;
+        this.#lifecycle += 1;
+        this.#needsRevalidation = false;
+        this.#revalidation = null;
+        window.removeEventListener('online', this.#handleOnline);
+        window.removeEventListener('offline', this.#handleOffline);
+        if (this.#timer !== null) window.clearTimeout(this.#timer);
+        this.#timer = null;
+        this.#callbacks.onUnauthorized();
+        return;
+      }
       const offline = !navigator.onLine;
       this.#callbacks.onClose(offline);
-      if (!offline) this.#scheduleReconnect();
+      this.#needsRevalidation = true;
+      if (!offline) this.#revalidateBeforeReconnect();
     });
     socket.addEventListener('error', () => socket.close());
   }
@@ -123,18 +149,59 @@ export class BrowserSocket {
   }
 
   #scheduleReconnect(): void {
-    if (this.#stopped || this.#timer !== null) return;
+    if (this.#stopped || this.#needsRevalidation || this.#timer !== null) return;
     const delay = reconnectDelay(this.#attempt);
     this.#attempt += 1;
+    const lifecycle = this.#lifecycle;
     this.#timer = window.setTimeout(() => {
       this.#timer = null;
-      if (this.#socket) return;
+      if (lifecycle !== this.#lifecycle || this.#socket) return;
       this.#connect(true);
     }, delay);
   }
 
+  #revalidateBeforeReconnect(): void {
+    if (this.#stopped || !this.#needsRevalidation || this.#revalidation !== null) return;
+    const lifecycle = this.#lifecycle;
+    let revalidation: Promise<boolean>;
+    try {
+      revalidation = this.#callbacks.revalidateSession();
+    } catch {
+      this.#stopped = true;
+      this.#needsRevalidation = false;
+      window.removeEventListener('online', this.#handleOnline);
+      window.removeEventListener('offline', this.#handleOffline);
+      return;
+    }
+    this.#revalidation = revalidation;
+    void revalidation.then((valid) => {
+      if (this.#stopped || lifecycle !== this.#lifecycle || this.#revalidation !== revalidation) return;
+      this.#revalidation = null;
+      if (!valid) {
+        this.#stopped = true;
+        this.#needsRevalidation = false;
+        window.removeEventListener('online', this.#handleOnline);
+        window.removeEventListener('offline', this.#handleOffline);
+        return;
+      }
+      this.#needsRevalidation = false;
+      if (navigator.onLine) this.#scheduleReconnect();
+    }).catch(() => {
+      if (this.#stopped || lifecycle !== this.#lifecycle || this.#revalidation !== revalidation) return;
+      this.#revalidation = null;
+      this.#stopped = true;
+      this.#needsRevalidation = false;
+      window.removeEventListener('online', this.#handleOnline);
+      window.removeEventListener('offline', this.#handleOffline);
+    });
+  }
+
   #handleOnline = (): void => {
     if (this.#stopped || this.#socket) return;
+    if (this.#needsRevalidation) {
+      this.#revalidateBeforeReconnect();
+      return;
+    }
     this.#attempt = 0;
     this.#connect(true);
   };

@@ -11,6 +11,7 @@ let
     services.herdr-controlplane = {
       enable = true;
       origin = "https://herdr.example.com";
+      upstreamLogoutUrl = "https://id.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fherdr.example.com%2F";
       oidc = {
         issuer = "https://id.example.com";
         audience = "herdr-control";
@@ -108,6 +109,24 @@ let
     ]).config.systemd.services.herdr-controlplane.serviceConfig.ExecStart
     ) true
   );
+  invalidLogoutSchemeEvaluation = builtins.tryEval (
+    builtins.deepSeq ((nixpkgsSystem [
+      self.nixosModules.controlplane
+      (lib.recursiveUpdate controlplaneConfig {
+        services.herdr-controlplane.upstreamLogoutUrl = "http://id.example.com/logout";
+      })
+    ]).config.systemd.services.herdr-controlplane.serviceConfig.ExecStart
+    ) true
+  );
+  invalidLogoutUserinfoEvaluation = builtins.tryEval (
+    builtins.deepSeq ((nixpkgsSystem [
+      self.nixosModules.controlplane
+      (lib.recursiveUpdate controlplaneConfig {
+        services.herdr-controlplane.upstreamLogoutUrl = "https://user@id.example.com/logout";
+      })
+    ]).config.systemd.services.herdr-controlplane.serviceConfig.ExecStart
+    ) true
+  );
   invalidConnectorUrlEvaluation = builtins.tryEval (
     builtins.deepSeq ((nixpkgsSystem [
       self.nixosModules.connector
@@ -161,6 +180,8 @@ let
     ":8443"
     "-origin"
     "https://herdr.example.com"
+    "-upstream-logout-url"
+    "https://id.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fherdr.example.com%2F"
     "-database"
     "/var/lib/herdr-controlplane/control.db"
     "-static-dir"
@@ -278,6 +299,8 @@ in
         )
         (controlService.UMask == "0077")
         (!invalidDatabaseEvaluation.success)
+        (!invalidLogoutSchemeEvaluation.success)
+        (!invalidLogoutUserinfoEvaluation.success)
       ]
       {
         execStart = controlService.ExecStart;

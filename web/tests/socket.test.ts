@@ -25,9 +25,9 @@ class FakeWebSocket extends EventTarget {
   send(value: string) {
     this.sent.push(value);
   }
-  close() {
+  close(code = 1000, reason = '') {
     this.readyState = 3;
-    this.dispatchEvent(new Event('close'));
+    this.dispatchEvent(new CloseEvent('close', { code, reason }));
   }
 }
 
@@ -58,6 +58,8 @@ describe('browser socket security and reconnect policy', () => {
       onOpen: () => events.push('open'),
       onMessage: () => true,
       onClose: () => events.push('close'),
+      onUnauthorized: () => events.push('unauthorized'),
+      revalidateSession: async () => true,
       onProtocolFailure: () => events.push('invalid'),
     });
     const outbound = validateMessage(frames[2]) as OutboundMessage;
@@ -74,7 +76,7 @@ describe('browser socket security and reconnect policy', () => {
     connection.stop();
   });
 
-  it('does not reset exponential backoff for sockets that open without a snapshot', () => {
+  it('does not reset exponential backoff for sockets that open without a snapshot', async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockReturnValue(1);
     FakeWebSocket.instances = [];
@@ -85,16 +87,20 @@ describe('browser socket security and reconnect policy', () => {
       onOpen: () => undefined,
       onMessage: () => true,
       onClose: () => undefined,
+      onUnauthorized: () => undefined,
+      revalidateSession: async () => true,
       onProtocolFailure: () => undefined,
     });
     connection.start();
     FakeWebSocket.instances[0]!.open();
     FakeWebSocket.instances[0]!.close();
+    await vi.runAllTicks();
     vi.advanceTimersByTime(1000);
     expect(FakeWebSocket.instances).toHaveLength(2);
 
     FakeWebSocket.instances[1]!.open();
     FakeWebSocket.instances[1]!.close();
+    await vi.runAllTicks();
     vi.advanceTimersByTime(1999);
     expect(FakeWebSocket.instances).toHaveLength(2);
     vi.advanceTimersByTime(1);
@@ -103,12 +109,13 @@ describe('browser socket security and reconnect policy', () => {
     FakeWebSocket.instances[2]!.open();
     FakeWebSocket.instances[2]!.message(frames[0]);
     FakeWebSocket.instances[2]!.close();
+    await vi.runAllTicks();
     vi.advanceTimersByTime(1000);
     expect(FakeWebSocket.instances).toHaveLength(4);
     connection.stop();
   });
 
-  it('refreshes during backoff with one socket and cancels the stale reconnect timer', () => {
+  it('refreshes during backoff with one socket and cancels the stale reconnect timer', async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockReturnValue(1);
     FakeWebSocket.instances = [];
@@ -119,11 +126,14 @@ describe('browser socket security and reconnect policy', () => {
       onOpen: () => undefined,
       onMessage: () => true,
       onClose: () => undefined,
+      onUnauthorized: () => undefined,
+      revalidateSession: async () => true,
       onProtocolFailure: () => undefined,
     });
     connection.start();
     FakeWebSocket.instances[0]!.open();
     FakeWebSocket.instances[0]!.close();
+    await vi.runAllTicks();
 
     connection.refresh();
     expect(FakeWebSocket.instances).toHaveLength(2);
@@ -134,6 +144,111 @@ describe('browser socket security and reconnect policy', () => {
     vi.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(2);
     expect(refreshedSocket.readyState).toBe(FakeWebSocket.OPEN);
+    connection.stop();
+  });
+
+  it('stops reconnecting immediately on private unauthorized close', () => {
+    vi.useFakeTimers();
+    FakeWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    const unauthorized = vi.fn();
+    const connection = new BrowserSocket({
+      onConnecting: () => undefined,
+      onOpen: () => undefined,
+      onMessage: () => true,
+      onClose: () => undefined,
+      onUnauthorized: unauthorized,
+      revalidateSession: async () => false,
+      onProtocolFailure: () => undefined,
+    });
+    connection.start();
+    FakeWebSocket.instances[0]!.open();
+    FakeWebSocket.instances[0]!.close(4401, 'session unauthorized');
+    expect(unauthorized).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('revalidates HTTP before reconnecting after an abnormal failed upgrade', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    FakeWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    let completeRevalidation: ((valid: boolean) => void) | undefined;
+    const revalidateSession = vi.fn(() => new Promise<boolean>((resolve) => { completeRevalidation = resolve; }));
+    const connection = new BrowserSocket({
+      onConnecting: () => undefined,
+      onOpen: () => undefined,
+      onMessage: () => true,
+      onClose: () => undefined,
+      onUnauthorized: () => undefined,
+      revalidateSession,
+      onProtocolFailure: () => undefined,
+    });
+    connection.start();
+    FakeWebSocket.instances[0]!.close(1006, 'server restart');
+    expect(revalidateSession).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    completeRevalidation?.(true);
+    await vi.runAllTicks();
+    vi.advanceTimersByTime(999);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    connection.stop();
+  });
+
+  it('stops after unauthorized HTTP revalidation without a reconnect loop', async () => {
+    vi.useFakeTimers();
+    FakeWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    const revalidateSession = vi.fn().mockResolvedValue(false);
+    const connection = new BrowserSocket({
+      onConnecting: () => undefined,
+      onOpen: () => undefined,
+      onMessage: () => true,
+      onClose: () => undefined,
+      onUnauthorized: () => undefined,
+      revalidateSession,
+      onProtocolFailure: () => undefined,
+    });
+    connection.start();
+    FakeWebSocket.instances[0]!.close(1006, 'failed upgrade');
+    window.dispatchEvent(new Event('online'));
+    await vi.runAllTicks();
+    expect(revalidateSession).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(120_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('ignores a stale revalidation after an explicit refresh', async () => {
+    vi.useFakeTimers();
+    FakeWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    let completeRevalidation: ((valid: boolean) => void) | undefined;
+    const revalidateSession = vi.fn(() => new Promise<boolean>((resolve) => { completeRevalidation = resolve; }));
+    const connection = new BrowserSocket({
+      onConnecting: () => undefined,
+      onOpen: () => undefined,
+      onMessage: () => true,
+      onClose: () => undefined,
+      onUnauthorized: () => undefined,
+      revalidateSession,
+      onProtocolFailure: () => undefined,
+    });
+    connection.start();
+    FakeWebSocket.instances[0]!.close(1006, 'server restart');
+    connection.refresh();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    completeRevalidation?.(true);
+    await vi.runAllTicks();
+    vi.advanceTimersByTime(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
     connection.stop();
   });
 });

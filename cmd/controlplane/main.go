@@ -23,10 +23,11 @@ import (
 )
 
 func main() {
-	var browserAddr, connectorAddr, origin, dbPath, staticDir, sessionSecret, caCert, caKey, tlsCert, tlsKey, clientCA, proxyCIDRs, issuer, audience, subject, mfa, vapidPublic, vapidPrivateFile, vapidSubscriber string
+	var browserAddr, connectorAddr, origin, upstreamLogoutURL, dbPath, staticDir, sessionSecret, caCert, caKey, tlsCert, tlsKey, clientCA, proxyCIDRs, issuer, audience, subject, mfa, vapidPublic, vapidPrivateFile, vapidSubscriber string
 	flag.StringVar(&browserAddr, "browser-listen", "127.0.0.1:8080", "reverse-proxy browser HTTP listener")
 	flag.StringVar(&connectorAddr, "connector-listen", ":8443", "connector mTLS listener")
 	flag.StringVar(&origin, "origin", "", "exact browser HTTPS origin")
+	flag.StringVar(&upstreamLogoutURL, "upstream-logout-url", "", "validated upstream OIDC HTTPS logout URL")
 	flag.StringVar(&dbPath, "database", "", "SQLite database path")
 	flag.StringVar(&staticDir, "static-dir", "", "PWA static directory")
 	flag.StringVar(&sessionSecret, "session-secret-file", "", "session secret file path")
@@ -81,9 +82,13 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		pushService = &push.Service{Store: st, Sender: &push.VAPIDSender{PublicKey: vapidPublic, PrivateKey: strings.TrimSpace(string(private)), Subscriber: vapidSubscriber, TTL: 60}}
+		privateKey := strings.TrimSpace(string(private))
+		if err := push.ValidateVAPIDConfiguration(vapidPublic, privateKey, vapidSubscriber); err != nil {
+			fatal(err)
+		}
+		pushService = &push.Service{Store: st, Sender: &push.VAPIDSender{PublicKey: vapidPublic, PrivateKey: privateKey, Subscriber: vapidSubscriber, TTL: 60}}
 	}
-	server, err := controlplane.NewServer(controlplane.ServerConfig{Origin: origin, StaticDir: staticDir, Proxy: proxy, Sessions: sessions, Store: st, Enrollment: enroll, Push: pushService, OperatorSubject: subject, Logger: log, Metrics: metrics}, hub)
+	server, err := controlplane.NewServer(controlplane.ServerConfig{Origin: origin, UpstreamLogoutURL: upstreamLogoutURL, StaticDir: staticDir, Proxy: proxy, Sessions: sessions, Store: st, Enrollment: enroll, Push: pushService, VAPIDPublicKey: vapidPublic, OperatorSubject: subject, Logger: log, Metrics: metrics}, hub)
 	if err != nil {
 		fatal(err)
 	}

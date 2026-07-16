@@ -1,0 +1,18 @@
+{
+  "$schema": "../../protocol/http-v1.schema.json",
+  "version": 1,
+  "cases": {
+    "session": {"request":null,"status":200,"response":{"authenticated":true,"operator":{"display_name":"operator"},"push_public_key":null,"logout_url":"https://id.example.com/logout"}},
+    "csrf": {"request":null,"status":200,"response":{"token":"opaque_csrf_token_0123456789abcdef"}},
+    "action_status": {"request":null,"status":200,"response":{"action_id":"019f64ca-3000-7000-8000-000000000105","operation_type":"agent.read","status":"failed","code":"CONNECTION_LOST","requested_at":"2026-07-15T08:00:00Z","completed_at":"2026-07-15T08:00:01Z"}},
+    "enrollment_create": {"request":{"display_name":"workstation"},"status":201,"response":{"token":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","host_id":"019f64ca-1000-7000-8000-000000000002","expires_at":"2026-07-15T08:10:00Z"}},
+    "host_credential_delete": {"request":null,"status":204,"response":null},
+    "push_register": {"request":{"endpoint":"https://push.example/device","keys":{"p256dh":"p256dh-key","auth":"auth-key"}},"status":204,"response":null},
+    "push_reconcile": {"request":{"endpoint":"https://push.example/device"},"status":200,"response":{"subscribed":true}},
+    "push_replace": {"request":{"source_endpoints":["https://push.example/old","https://push.example/intermediate"],"subscription":{"endpoint":"https://push.example/new","keys":{"p256dh":"new-p256dh","auth":"new-auth"}}},"status":204,"response":null},
+    "push_delete": {"request":{"endpoints":["https://push.example/device","https://push.example/old-device"]},"status":204,"response":null},
+    "push_test_enabled": {"request":{},"status":202,"response":{"enabled":true}},
+    "push_test_disabled": {"request":{},"status":200,"response":{"enabled":false}},
+    "logout": {"request":{},"status":200,"response":{"logout_url":"https://id.example.com/logout"}}
+  }
+}

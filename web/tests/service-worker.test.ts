@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import serviceWorkerSource from '../src/sw.ts?raw';
-import pushApiSource from '../src/api/push.ts?raw';
 
 describe('service worker cache and notification policy', () => {
   it('precaches only the injected shell and defines no runtime content cache', () => {
@@ -17,7 +16,8 @@ describe('service worker cache and notification policy', () => {
 
   it('handles browser subscription rotation through metadata-only server reconciliation', () => {
     expect(serviceWorkerSource).toContain("addEventListener('pushsubscriptionchange'");
-    expect(pushApiSource).toContain("'/api/v1/push/subscription'");
-    expect(`${serviceWorkerSource}\n${pushApiSource}`).not.toMatch(/terminal_id|prompt|terminal output|sent input/i);
+    expect(serviceWorkerSource).toContain('handlePushSubscriptionChange(self.registration, event.oldSubscription, event.newSubscription)');
+    expect(serviceWorkerSource).not.toContain('applicationServerKey = event.oldSubscription');
+    expect(serviceWorkerSource).not.toMatch(/terminal_id|prompt|terminal output|sent input/i);
   });
 });

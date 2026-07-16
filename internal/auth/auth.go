@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -101,11 +100,13 @@ type Session struct {
 	Created, LastSeen time.Time
 }
 type Sessions struct {
-	mu         sync.Mutex
-	items      map[string]Session
-	now        func() time.Time
-	CookieName string
-	secret     []byte
+	mu          sync.Mutex
+	items       map[string]Session
+	watchers    map[string]map[uint64]chan struct{}
+	nextWatcher uint64
+	now         func() time.Time
+	CookieName  string
+	secret      []byte
 }
 
 func NewSessions(secretFile string) (*Sessions, error) {
@@ -116,12 +117,18 @@ func NewSessions(secretFile string) (*Sessions, error) {
 	if len(strings.TrimSpace(string(b))) < 32 {
 		return nil, errors.New("session secret file must contain at least 32 bytes")
 	}
-	return &Sessions{items: map[string]Session{}, now: time.Now, CookieName: "__Host-herdr_session", secret: append([]byte(nil), b...)}, nil
+	return newSessions(append([]byte(nil), b...), time.Now), nil
 }
 
 // NewTestSessions avoids filesystem secrets in unit tests.
 func NewTestSessions() *Sessions {
-	return &Sessions{items: map[string]Session{}, now: time.Now, CookieName: "__Host-herdr_session", secret: []byte("test-session-secret-not-for-production")}
+	return NewTestSessionsWithClock(time.Now)
+}
+func NewTestSessionsWithClock(now func() time.Time) *Sessions {
+	return newSessions([]byte("test-session-secret-not-for-production"), now)
+}
+func newSessions(secret []byte, now func() time.Time) *Sessions {
+	return &Sessions{items: map[string]Session{}, watchers: map[string]map[uint64]chan struct{}{}, now: now, CookieName: "__Host-herdr_session", secret: secret}
 }
 func (s *Sessions) Issue(w http.ResponseWriter, id Identity) (Session, error) {
 	nonce, err := random(32)
@@ -153,11 +160,12 @@ func (s *Sessions) Get(r *http.Request) (Session, error) {
 	defer s.mu.Unlock()
 	session, ok := s.items[cookie.Value]
 	if !ok || now.Sub(session.LastSeen) > 30*time.Minute || now.Sub(session.Created) > 8*time.Hour {
-		delete(s.items, cookie.Value)
+		s.revokeLocked(cookie.Value)
 		return Session{}, errors.New("session expired")
 	}
 	id, ok := IdentityFrom(r.Context())
 	if !ok || id != session.Identity {
+		s.revokeLocked(cookie.Value)
 		return Session{}, errors.New("identity changed")
 	}
 	session.LastSeen = now
@@ -170,31 +178,70 @@ func (s *Sessions) Check(session Session) error {
 	defer s.mu.Unlock()
 	current, ok := s.items[session.ID]
 	if !ok || current.Identity != session.Identity || now.Sub(current.LastSeen) > 30*time.Minute || now.Sub(current.Created) > 8*time.Hour {
-		delete(s.items, session.ID)
+		s.revokeLocked(session.ID)
 		return errors.New("session expired")
 	}
 	current.LastSeen = now
 	s.items[session.ID] = current
 	return nil
 }
+func (s *Sessions) Valid(session Session) error {
+	now := s.now().UTC()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.items[session.ID]
+	if !ok || current.Identity != session.Identity || now.Sub(current.LastSeen) > 30*time.Minute || now.Sub(current.Created) > 8*time.Hour {
+		s.revokeLocked(session.ID)
+		return errors.New("session expired")
+	}
+	return nil
+}
+func (s *Sessions) Watch(session Session) (<-chan struct{}, func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now().UTC()
+	current, ok := s.items[session.ID]
+	if !ok || current.Identity != session.Identity || now.Sub(current.LastSeen) > 30*time.Minute || now.Sub(current.Created) > 8*time.Hour {
+		s.revokeLocked(session.ID)
+		return nil, nil, errors.New("session expired")
+	}
+	id := s.nextWatcher
+	s.nextWatcher++
+	ch := make(chan struct{})
+	if s.watchers[session.ID] == nil {
+		s.watchers[session.ID] = map[uint64]chan struct{}{}
+	}
+	s.watchers[session.ID][id] = ch
+	cancel := func() {
+		s.mu.Lock()
+		if watchers := s.watchers[session.ID]; watchers != nil {
+			delete(watchers, id)
+			if len(watchers) == 0 {
+				delete(s.watchers, session.ID)
+			}
+		}
+		s.mu.Unlock()
+	}
+	return ch, cancel, nil
+}
 func (s *Sessions) RequireCSRF(r *http.Request, session Session) bool {
 	got := r.Header.Get("X-CSRF-Token")
 	return len(got) == len(session.CSRF) && subtle.ConstantTimeCompare([]byte(got), []byte(session.CSRF)) == 1
 }
-func (s *Sessions) Handler(w http.ResponseWriter, r *http.Request) {
-	id, ok := IdentityFrom(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", 401)
-		return
+func (s *Sessions) Delete(id string) {
+	s.mu.Lock()
+	s.revokeLocked(id)
+	s.mu.Unlock()
+}
+func (s *Sessions) revokeLocked(id string) {
+	delete(s.items, id)
+	for _, watcher := range s.watchers[id] {
+		close(watcher)
 	}
-	session, err := s.Issue(w, id)
-	if err != nil {
-		http.Error(w, "internal", 500)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]string{"csrf_token": session.CSRF})
+	delete(s.watchers, id)
+}
+func (s *Sessions) ClearCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: s.CookieName, Value: "", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0).UTC()})
 }
 func random(n int) (string, error) {
 	b := make([]byte, n)

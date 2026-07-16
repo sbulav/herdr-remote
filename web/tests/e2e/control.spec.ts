@@ -79,7 +79,7 @@ function envelope(type: string, body: unknown, suffix: string) {
 
 test('executes writable prompt, complete key, and interrupt controls', async ({ page }) => {
   const requests: Array<Record<string, any>> = [];
-  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null } }));
+  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null, logout_url: 'https://id.example/logout' } }));
   await page.routeWebSocket('**/v1/browser/ws', (socket) => {
     socket.onMessage((raw) => {
       const message = JSON.parse(String(raw)) as Record<string, any>;
@@ -119,7 +119,7 @@ test('executes writable prompt, complete key, and interrupt controls', async ({ 
 test('resubscribes output intent after a binding change and hides stale reads', async ({ page }) => {
   const subscriptions: string[] = [];
   let serverSocket: WebSocketRoute | null = null;
-  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null } }));
+  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null, logout_url: 'https://id.example/logout' } }));
   await page.routeWebSocket('**/v1/browser/ws', (socket) => {
     serverSocket = socket;
     socket.onMessage((raw) => {
@@ -170,4 +170,64 @@ test('resubscribes output intent after a binding change and hides stale reads', 
   await page.getByRole('button', { name: 'Read now' }).click();
   await expect(page.getByText(/Agent state changed before the action could run/)).toBeVisible();
   await expect(page.getByText('stale terminal content must not render')).toHaveCount(0);
+});
+
+test('logs out with the opaque session CSRF contract', async ({ page }) => {
+  let logoutCSRF: string | undefined;
+  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null, logout_url: 'https://id.example/logout' } }));
+  await page.route('**/api/v1/csrf', (route) => route.fulfill({ json: { token: 'csrf-token' } }));
+  await page.route('**/auth/logout', async (route) => {
+    logoutCSRF = route.request().headers()['x-csrf-token'];
+    await route.fulfill({ json: { logout_url: 'https://id.example/logout' } });
+  });
+  await page.route('https://id.example/logout', (route) => route.fulfill({ contentType: 'text/html', body: '<title>Signed out</title>' }));
+  await page.routeWebSocket('**/v1/browser/ws', () => undefined);
+  await page.goto('/agents');
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await page.waitForURL('https://id.example/logout');
+  await expect(page).toHaveTitle('Signed out');
+  expect(logoutCSRF).toBe('csrf-token');
+});
+
+test('does not bootstrap again when logout revokes the websocket before POST returns', async ({ page }) => {
+  let sessionRequests = 0;
+  let serverSocket: WebSocketRoute | null = null;
+  await page.route('**/api/v1/session', (route) => {
+    sessionRequests += 1;
+    return route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null, logout_url: 'https://id.example/logout' } });
+  });
+  await page.route('**/api/v1/csrf', (route) => route.fulfill({ json: { token: 'csrf-token' } }));
+  await page.routeWebSocket('**/v1/browser/ws', (socket) => { serverSocket = socket; });
+  await page.route('**/auth/logout', async (route) => {
+    if (serverSocket) await serverSocket.close({ code: 4401, reason: 'session unauthorized' }).catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await route.fulfill({ json: { logout_url: 'https://id.example/logout' } });
+  });
+  await page.route('https://id.example/logout', (route) => route.fulfill({ contentType: 'text/html', body: '<title>Signed out</title>' }));
+
+  await page.goto('/agents');
+  await expect.poll(() => serverSocket).not.toBeNull();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await page.waitForURL('https://id.example/logout');
+
+  expect(sessionRequests).toBe(1);
+});
+
+test('navigates to bootstrap logout URL when local logout fails', async ({ page }) => {
+  let logoutRequests = 0;
+  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null, logout_url: 'https://id.example/logout' } }));
+  await page.route('**/api/v1/csrf', (route) => route.fulfill({ json: { token: 'csrf-token' } }));
+  await page.route('**/auth/logout', (route) => {
+    logoutRequests += 1;
+    return route.fulfill({ status: 500, body: 'failed' });
+  });
+  await page.route('https://id.example/logout', (route) => route.fulfill({ contentType: 'text/html', body: '<title>Signed out despite local failure</title>' }));
+  await page.routeWebSocket('**/v1/browser/ws', () => undefined);
+
+  await page.goto('/agents');
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await page.waitForURL('https://id.example/logout');
+
+  expect(logoutRequests).toBe(1);
+  await expect(page).toHaveTitle('Signed out despite local failure');
 });

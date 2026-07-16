@@ -6,6 +6,7 @@
     browserListen = "127.0.0.1:8080";
     connectorListen = ":8443";
     origin = "https://herdr.example.com";
+    upstreamLogoutUrl = "https://id.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fherdr.example.com%2F";
     trustedProxyCIDRs = [
       "127.0.0.0/8"
       "::1/128"

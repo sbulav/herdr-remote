@@ -12,7 +12,7 @@ const snapshot = {
 };
 
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null } }));
+  await page.route('**/api/v1/session', (route) => route.fulfill({ json: { authenticated: true, operator: { display_name: 'Operator' }, push_public_key: null, logout_url: 'https://id.example/logout' } }));
   await page.routeWebSocket('**/v1/browser/ws', (socket) => socket.send(JSON.stringify(snapshot)));
 });
 

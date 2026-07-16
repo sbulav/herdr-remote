@@ -18,6 +18,13 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
+Object.defineProperty(navigator, 'locks', {
+  configurable: true,
+  value: {
+    request: async (_name: string, _options: LockOptions, callback: (lock: Lock) => unknown) => callback({ name: _name, mode: 'exclusive' }),
+  },
+});
+
 // jsdom has no canvas implementation. Axe probes canvas while evaluating
 // icon ligatures, so return null and cover palette contrast independently.
 HTMLCanvasElement.prototype.getContext = vi.fn(() => null) as typeof HTMLCanvasElement.prototype.getContext;

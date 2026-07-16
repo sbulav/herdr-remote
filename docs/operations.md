@@ -26,6 +26,8 @@ Provision secrets at runtime and keep them out of Git and the Nix store.
 - connector client CA trust file;
 - optional VAPID private key.
 
+Configure the provider's absolute HTTPS upstream logout URL separately from the PWA. Verify that it contains no userinfo and that provider logout returns to an appropriate signed-out page.
+
 ### Connector
 
 - client private key generated on the connector host;
@@ -70,10 +72,12 @@ curl --fail http://127.0.0.1:8080/metrics
 
 Alert on readiness failure, repeated connector disconnects, malformed-message growth, audit completion failures, and certificate expiry. Never add prompt, output, input, keys, tokens, or certificate bodies to logs or metric labels.
 
+During deployment validation, confirm that `POST /auth/logout` revokes all application sockets and navigates through the configured upstream OIDC logout URL.
+
 ## Enrollment
 
 1. Authenticate through the OIDC proxy.
-2. Fetch `GET /api/v1/session` and retain the secure session cookie and CSRF token.
+2. Fetch `GET /api/v1/session` to issue the secure opaque session cookie, then fetch `GET /api/v1/csrf` for the CSRF token.
 3. Send `POST /api/v1/enrollments` with `{"display_name":"HOST_LABEL"}` and the CSRF token.
 4. Transfer the returned token through a protected channel into a mode `0600` file.
 5. Run the connector once with `-enroll-url`, `-enrollment-token-file`, `-server-ca-file`, `-key-file`, and `-cert-file` in a private staging directory.

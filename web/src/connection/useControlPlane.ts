@@ -18,15 +18,18 @@ export interface ControlPlane {
   act(target: Target, operation: Operation): string | null;
   sendKey(target: Target, key: KeyName): string | null;
   requestResync(reason?: ResyncReason): void;
+  stop(): void;
 }
 
-export function useControlPlane(enabled: boolean, onUnauthorized?: () => void): ControlPlane {
+export function useControlPlane(enabled: boolean, onUnauthorized?: () => void, revalidateSession?: () => Promise<boolean>): ControlPlane {
   const [state, dispatch] = useReducer(browserReducer, initialBrowserState);
   const stateRef = useRef(state);
   stateRef.current = state;
   const socketRef = useRef<BrowserSocket | null>(null);
   const unauthorizedRef = useRef(onUnauthorized);
   unauthorizedRef.current = onUnauthorized;
+  const revalidateRef = useRef(revalidateSession);
+  revalidateRef.current = revalidateSession;
   const transition = useCallback((event: Parameters<typeof browserReducer>[1]) => {
     stateRef.current = browserReducer(stateRef.current, event);
     dispatch(event);
@@ -52,6 +55,11 @@ export function useControlPlane(enabled: boolean, onUnauthorized?: () => void): 
         return !next.snapshotRejected;
       },
       onClose: (offline) => transition({ type: 'socket.closed', offline }),
+      onUnauthorized: () => {
+        transition({ type: 'session.unauthorized' });
+        unauthorizedRef.current?.();
+      },
+      revalidateSession: () => revalidateRef.current?.() ?? Promise.resolve(false),
       onProtocolFailure: () => transition({ type: 'resync.requested', reason: 'epoch_mismatch' }),
     });
     socketRef.current = socket;
@@ -156,9 +164,14 @@ export function useControlPlane(enabled: boolean, onUnauthorized?: () => void): 
   const requestResync = useCallback((reason: ResyncReason = 'operator_refresh') => {
     transition({ type: 'resync.requested', reason });
   }, [transition]);
+  const stop = useCallback(() => {
+    socketRef.current?.stop();
+    socketRef.current = null;
+    transition({ type: 'session.unauthorized' });
+  }, [transition]);
 
   return useMemo(
-    () => ({ state, subscribe, unsubscribe, act, sendKey, requestResync }),
-    [act, requestResync, sendKey, state, subscribe, unsubscribe],
+    () => ({ state, subscribe, unsubscribe, act, sendKey, requestResync, stop }),
+    [act, requestResync, sendKey, state, stop, subscribe, unsubscribe],
   );
 }

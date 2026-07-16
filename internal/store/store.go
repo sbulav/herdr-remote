@@ -10,9 +10,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
+
+	"github.com/dcolinmorgan/herdr-remote/internal/pushendpoint"
 	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
@@ -26,8 +27,13 @@ var ErrHostLimit = errors.New("host limit reached")
 var ErrInvalidDisplayName = errors.New("invalid enrollment display name")
 var ErrPushLimit = errors.New("push subscription limit reached")
 var ErrInvalidPushSubscription = errors.New("invalid push subscription")
+var ErrPushOwnership = errors.New("push subscription is not owned by operator")
+var ErrPushConflict = errors.New("push replacement payload conflicts with existing subscription")
+var ErrPushMissing = errors.New("push replacement source is missing")
 
 const MaxPushSubscriptionsPerOperator = 20
+const MaxPushReplacementSources = 16
+const MaxPushDeletionEndpoints = MaxPushReplacementSources + 1
 
 type Store struct {
 	db  *sql.DB
@@ -454,9 +460,126 @@ func (s *Store) UpsertPush(ctx context.Context, p PushSubscription) error {
 	}
 	return tx.Commit()
 }
+func (s *Store) ReplacePush(ctx context.Context, subject string, sourceEndpoints []string, replacement PushSubscription) error {
+	if replacement.Subject != subject || !validPush(replacement) || !validPushReplacementSources(sourceEndpoints) {
+		return ErrInvalidPushSubscription
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var existing PushSubscription
+	targetExists := true
+	err = tx.QueryRowContext(ctx, `SELECT subject,endpoint,p256dh,auth,user_agent FROM push_subscriptions WHERE endpoint=?`, replacement.Endpoint).Scan(&existing.Subject, &existing.Endpoint, &existing.P256DH, &existing.Auth, &existing.UserAgent)
+	if errors.Is(err, sql.ErrNoRows) {
+		targetExists = false
+	} else if err != nil {
+		return err
+	}
+	if targetExists {
+		if existing.Subject != subject {
+			return ErrPushOwnership
+		}
+		if existing.P256DH != replacement.P256DH || existing.Auth != replacement.Auth {
+			return ErrPushConflict
+		}
+	}
+	ownedSources := make([]string, 0, len(sourceEndpoints))
+	for _, endpoint := range sourceEndpoints {
+		if endpoint == replacement.Endpoint {
+			continue
+		}
+		var owner string
+		err := tx.QueryRowContext(ctx, `SELECT subject FROM push_subscriptions WHERE endpoint=?`, endpoint).Scan(&owner)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && owner == subject {
+			ownedSources = append(ownedSources, endpoint)
+		}
+	}
+	if !targetExists && len(ownedSources) == 0 {
+		return ErrPushMissing
+	}
+	for _, endpoint := range ownedSources {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE subject=? AND endpoint=?`, subject, endpoint); err != nil {
+			return err
+		}
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM push_subscriptions WHERE subject=? AND endpoint<>?`, subject, replacement.Endpoint).Scan(&count); err != nil {
+		return err
+	}
+	if count >= MaxPushSubscriptionsPerOperator {
+		return ErrPushLimit
+	}
+	now := s.now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO push_subscriptions(subject,endpoint,p256dh,auth,user_agent,created_at,updated_at)VALUES(?,?,?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent,updated_at=excluded.updated_at`, replacement.Subject, replacement.Endpoint, replacement.P256DH, replacement.Auth, replacement.UserAgent, now, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func validPushReplacementSources(sourceEndpoints []string) bool {
+	if len(sourceEndpoints) < 1 || len(sourceEndpoints) > MaxPushReplacementSources {
+		return false
+	}
+	seen := make(map[string]struct{}, len(sourceEndpoints))
+	for _, endpoint := range sourceEndpoints {
+		if len(endpoint) > 2048 {
+			return false
+		}
+		if _, err := pushendpoint.Parse(endpoint); err != nil {
+			return false
+		}
+		if _, exists := seen[endpoint]; exists {
+			return false
+		}
+		seen[endpoint] = struct{}{}
+	}
+	return true
+}
 func (s *Store) DeletePush(ctx context.Context, endpoint string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE endpoint=?`, endpoint)
 	return err
+}
+func (s *Store) DeletePushForSubject(ctx context.Context, subject, endpoint string) error {
+	return s.DeletePushEndpointsForSubject(ctx, subject, []string{endpoint})
+}
+func (s *Store) DeletePushEndpointsForSubject(ctx context.Context, subject string, endpoints []string) error {
+	if subject == "" || len(endpoints) < 1 || len(endpoints) > MaxPushDeletionEndpoints {
+		return ErrInvalidPushSubscription
+	}
+	seen := make(map[string]struct{}, len(endpoints))
+	for _, endpoint := range endpoints {
+		if len(endpoint) > 2048 {
+			return ErrInvalidPushSubscription
+		}
+		if _, err := pushendpoint.Parse(endpoint); err != nil {
+			return ErrInvalidPushSubscription
+		}
+		if _, exists := seen[endpoint]; exists {
+			return ErrInvalidPushSubscription
+		}
+		seen[endpoint] = struct{}{}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, endpoint := range endpoints {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE subject=? AND endpoint=?`, subject, endpoint); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+func (s *Store) HasPushSubscription(ctx context.Context, subject, endpoint string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM push_subscriptions WHERE subject=? AND endpoint=?)`, subject, endpoint).Scan(&exists)
+	return exists, err
 }
 func (s *Store) PushSubscriptions(ctx context.Context, subject string) ([]PushSubscription, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT subject,endpoint,p256dh,auth,user_agent FROM push_subscriptions WHERE subject=? ORDER BY updated_at DESC LIMIT ?`, subject, MaxPushSubscriptionsPerOperator)
@@ -475,8 +598,7 @@ func (s *Store) PushSubscriptions(ctx context.Context, subject string) ([]PushSu
 	return out, rows.Err()
 }
 func validPush(p PushSubscription) bool {
-	endpoint, err := url.Parse(p.Endpoint)
-	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || len(p.Endpoint) > 2048 || len(p.P256DH) < 1 || len(p.P256DH) > 512 || len(p.Auth) < 1 || len(p.Auth) > 256 || len(p.Subject) < 1 || len(p.Subject) > 256 || len(p.UserAgent) > 256 {
+	if _, err := pushendpoint.Parse(p.Endpoint); err != nil || len(p.P256DH) < 1 || len(p.P256DH) > 512 || len(p.Auth) < 1 || len(p.Auth) > 256 || len(p.Subject) < 1 || len(p.Subject) > 256 || len(p.UserAgent) > 256 {
 		return false
 	}
 	for _, value := range []string{p.Endpoint, p.P256DH, p.Auth, p.Subject, p.UserAgent} {

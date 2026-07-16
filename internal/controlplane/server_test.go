@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,7 +50,7 @@ func testServer(t *testing.T) (*Server, *Hub, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := NewServer(ServerConfig{Origin: "https://app.example", Proxy: proxy, Sessions: sessions, Store: st, Enrollment: enroll, Metrics: metrics}, hub)
+	server, err := NewServer(ServerConfig{Origin: "https://app.example", UpstreamLogoutURL: "https://id.example/logout", Proxy: proxy, Sessions: sessions, Store: st, Enrollment: enroll, Metrics: metrics}, hub)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +100,32 @@ func TestHealthReadinessIdentityAndOrigin(t *testing.T) {
 		t.Fatalf("bad origin accepted: %d", wsW.Code)
 	}
 }
+func TestServerRejectsInconsistentVAPIDConfiguration(t *testing.T) {
+	base, hub, st := testServer(t)
+	defer st.Close()
+	cfg := base.cfg
+	cfg.VAPIDPublicKey = testVAPIDPublicKey(t)
+	if _, err := NewServer(cfg, hub); err == nil {
+		t.Fatal("VAPID public key without push service accepted")
+	}
+	cfg.Push = &push.Service{Store: st, Sender: recordingPushSender{sent: make(chan push.Event, 1)}, MaxAttempts: 1}
+	cfg.OperatorSubject = "operator"
+	cfg.VAPIDPublicKey = "invalid"
+	if _, err := NewServer(cfg, hub); err == nil {
+		t.Fatal("invalid VAPID public key accepted")
+	}
+}
+func TestServerRejectsUnsafeUpstreamLogoutURL(t *testing.T) {
+	base, hub, st := testServer(t)
+	defer st.Close()
+	for _, value := range []string{"", "http://id.example/logout", "https://user@id.example/logout", "https://id.example/logout#fragment"} {
+		cfg := base.cfg
+		cfg.UpstreamLogoutURL = value
+		if _, err := NewServer(cfg, hub); err == nil {
+			t.Fatalf("unsafe upstream logout URL accepted: %q", value)
+		}
+	}
+}
 func TestStateChangingHTTPRequiresExactOrigin(t *testing.T) {
 	s, _, st := testServer(t)
 	defer st.Close()
@@ -105,15 +134,20 @@ func TestStateChangingHTTPRequiresExactOrigin(t *testing.T) {
 	headers(login, "operator")
 	loginW := httptest.NewRecorder()
 	handler.ServeHTTP(loginW, login)
-	var sessionBody map[string]string
-	if err := json.Unmarshal(loginW.Body.Bytes(), &sessionBody); err != nil {
+	csrfRequest := httptest.NewRequest("GET", "/api/v1/csrf", nil)
+	headers(csrfRequest, "operator")
+	csrfRequest.AddCookie(loginW.Result().Cookies()[0])
+	csrfResponse := httptest.NewRecorder()
+	handler.ServeHTTP(csrfResponse, csrfRequest)
+	var csrfBody map[string]string
+	if err := json.Unmarshal(csrfResponse.Body.Bytes(), &csrfBody); err != nil {
 		t.Fatal(err)
 	}
 	request := func(origin string) int {
 		r := httptest.NewRequest("POST", "/api/v1/enrollments", strings.NewReader(`{"display_name":"host"}`))
 		headers(r, "operator")
 		r.AddCookie(loginW.Result().Cookies()[0])
-		r.Header.Set("X-CSRF-Token", sessionBody["csrf_token"])
+		r.Header.Set("X-CSRF-Token", csrfBody["token"])
 		if origin != "" {
 			r.Header.Set("Origin", origin)
 		}
@@ -133,7 +167,7 @@ func TestStateChangingHTTPRequiresExactOrigin(t *testing.T) {
 	badName := httptest.NewRequest("POST", "/api/v1/enrollments", strings.NewReader("{\"display_name\":\"bad\\nname\"}"))
 	headers(badName, "operator")
 	badName.AddCookie(loginW.Result().Cookies()[0])
-	badName.Header.Set("X-CSRF-Token", sessionBody["csrf_token"])
+	badName.Header.Set("X-CSRF-Token", csrfBody["token"])
 	badName.Header.Set("Origin", "https://app.example")
 	badNameResponse := httptest.NewRecorder()
 	handler.ServeHTTP(badNameResponse, badName)
@@ -855,6 +889,197 @@ func (s recordingPushSender) Send(_ context.Context, _ store.PushSubscription, e
 	s.sent <- event
 	return push.Sent, nil
 }
+
+type stalledFirstBatchSender struct {
+	started atomic.Int32
+	mu      sync.Mutex
+	seen    map[string]bool
+}
+
+func (s *stalledFirstBatchSender) Send(ctx context.Context, subscription store.PushSubscription, _ push.Event) (push.Outcome, error) {
+	position := s.started.Add(1)
+	s.mu.Lock()
+	s.seen[subscription.Endpoint] = true
+	s.mu.Unlock()
+	if position <= 4 {
+		<-ctx.Done()
+		return push.Retry, ctx.Err()
+	}
+	return push.Sent, nil
+}
+
+func TestPushReplacementChainSurvivesLostResponseAtDeviceLimit(t *testing.T) {
+	base, hub, st := testServer(t)
+	defer st.Close()
+	ctx := context.Background()
+	for i := 0; i < store.MaxPushSubscriptionsPerOperator; i++ {
+		if err := st.UpsertPush(ctx, store.PushSubscription{Subject: "operator", Endpoint: fmt.Sprintf("https://push.example/device-%02d", i), P256DH: "key", Auth: "auth"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := base.cfg
+	cfg.Push = &push.Service{Store: st, Sender: recordingPushSender{sent: make(chan push.Event, 1)}, MaxAttempts: 1}
+	cfg.VAPIDPublicKey = testVAPIDPublicKey(t)
+	cfg.OperatorSubject = "operator"
+	server, err := NewServer(cfg, hub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.BrowserHandler()
+	sessionRequest := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	headers(sessionRequest, "operator")
+	sessionResponse := httptest.NewRecorder()
+	handler.ServeHTTP(sessionResponse, sessionRequest)
+	cookie := sessionResponse.Result().Cookies()[0]
+	csrfRequest := httptest.NewRequest(http.MethodGet, "/api/v1/csrf", nil)
+	headers(csrfRequest, "operator")
+	csrfRequest.AddCookie(cookie)
+	csrfResponse := httptest.NewRecorder()
+	handler.ServeHTTP(csrfResponse, csrfRequest)
+	var csrfBody struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(csrfResponse.Body.Bytes(), &csrfBody); err != nil {
+		t.Fatal(err)
+	}
+
+	replace := func(sourceEndpoints []string, newEndpoint, p256dh, auth string, wantStatus int) {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{
+			"source_endpoints": sourceEndpoints,
+			"subscription":     map[string]any{"endpoint": newEndpoint, "keys": map[string]string{"p256dh": p256dh, "auth": auth}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/push/subscriptions/replace", strings.NewReader(string(body)))
+		headers(request, "operator")
+		request.AddCookie(cookie)
+		request.Header.Set("Origin", cfg.Origin)
+		request.Header.Set("X-CSRF-Token", csrfBody.Token)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != wantStatus {
+			t.Fatalf("replace %v -> %s = %d, body=%q", sourceEndpoints, newEndpoint, response.Code, response.Body.String())
+		}
+	}
+
+	a := "https://push.example/device-00"
+	b := "https://push.example/rotated-b"
+	c := "https://push.example/rotated-c"
+	replace([]string{a}, b, "b-key", "b-auth", http.StatusNoContent) // The committed response is intentionally discarded.
+	replace([]string{a, b}, c, "c-key", "c-auth", http.StatusNoContent)
+	replace([]string{a, b}, c, "c-key", "c-auth", http.StatusNoContent)
+
+	d := "https://push.example/device-01"
+	e := "https://push.example/uncommitted-e"
+	f := "https://push.example/rotated-f"
+	replace([]string{d, e}, f, "f-key", "f-auth", http.StatusNoContent)
+
+	foreign := "https://push.example/foreign-source"
+	if err := st.UpsertPush(ctx, store.PushSubscription{Subject: "other", Endpoint: foreign, P256DH: "foreign-key", Auth: "foreign-auth"}); err != nil {
+		t.Fatal(err)
+	}
+	multi := "https://push.example/multi-target"
+	replace([]string{"https://push.example/device-02", foreign, "https://push.example/device-03"}, multi, "multi-key", "multi-auth", http.StatusNoContent)
+	replace([]string{"https://push.example/missing", foreign}, "https://push.example/missing-target", "key", "auth", http.StatusNotFound)
+	replace([]string{"https://push.example/missing"}, foreign, "foreign-key", "foreign-auth", http.StatusForbidden)
+	replace(nil, "https://push.example/invalid-empty", "key", "auth", http.StatusBadRequest)
+	replace([]string{a, a}, "https://push.example/invalid-duplicate", "key", "auth", http.StatusBadRequest)
+	overflowSources := make([]string, store.MaxPushReplacementSources+1)
+	for index := range overflowSources {
+		overflowSources[index] = fmt.Sprintf("https://push.example/overflow-%02d", index)
+	}
+	replace(overflowSources, "https://push.example/invalid-overflow", "key", "auth", http.StatusBadRequest)
+	replace([]string{"https://push.example/" + strings.Repeat("x", 2049)}, "https://push.example/invalid-long", "key", "auth", http.StatusBadRequest)
+
+	subscriptions, err := st.PushSubscriptions(ctx, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subscriptions) != store.MaxPushSubscriptionsPerOperator-1 {
+		t.Fatalf("subscriptions after chain = %d", len(subscriptions))
+	}
+	seen := make(map[string]store.PushSubscription, len(subscriptions))
+	for _, subscription := range subscriptions {
+		seen[subscription.Endpoint] = subscription
+	}
+	if _, exists := seen[a]; exists {
+		t.Fatal("source A remained after replacement chain")
+	}
+	if _, exists := seen[b]; exists {
+		t.Fatal("intermediate B remained after replacement chain")
+	}
+	if got, exists := seen[c]; !exists || got.P256DH != "c-key" || got.Auth != "c-auth" {
+		t.Fatalf("final subscription C = %#v, exists=%t", got, exists)
+	}
+	for _, endpoint := range []string{d, e, "https://push.example/device-02", "https://push.example/device-03"} {
+		if _, exists := seen[endpoint]; exists {
+			t.Fatalf("candidate remained after replacement: %s", endpoint)
+		}
+	}
+	for _, endpoint := range []string{f, multi} {
+		if _, exists := seen[endpoint]; !exists {
+			t.Fatalf("target missing after replacement: %s", endpoint)
+		}
+	}
+	if exists, err := st.HasPushSubscription(ctx, "other", foreign); err != nil || !exists {
+		t.Fatalf("foreign candidate changed: exists=%t err=%v", exists, err)
+	}
+}
+
+func TestPushHTTPFanoutAttemptsAllDevicesAfterFirstWorkerBatchStalls(t *testing.T) {
+	base, hub, st := testServer(t)
+	defer st.Close()
+	for i := 0; i < store.MaxPushSubscriptionsPerOperator; i++ {
+		if err := st.UpsertPush(context.Background(), store.PushSubscription{Subject: "operator", Endpoint: fmt.Sprintf("https://push.example/device-%02d", i), P256DH: "key", Auth: "auth"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sender := &stalledFirstBatchSender{seen: map[string]bool{}}
+	cfg := base.cfg
+	cfg.Push = &push.Service{Store: st, Sender: sender, MaxAttempts: 1, MaxConcurrency: 4, PerDeviceTimeout: 20 * time.Millisecond}
+	cfg.VAPIDPublicKey = testVAPIDPublicKey(t)
+	cfg.OperatorSubject = "operator"
+	server, err := NewServer(cfg, hub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.BrowserHandler()
+	sessionRequest := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+	headers(sessionRequest, "operator")
+	sessionResponse := httptest.NewRecorder()
+	handler.ServeHTTP(sessionResponse, sessionRequest)
+	cookie := sessionResponse.Result().Cookies()[0]
+	csrfRequest := httptest.NewRequest(http.MethodGet, "/api/v1/csrf", nil)
+	headers(csrfRequest, "operator")
+	csrfRequest.AddCookie(cookie)
+	csrfResponse := httptest.NewRecorder()
+	handler.ServeHTTP(csrfResponse, csrfRequest)
+	var csrfBody struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(csrfResponse.Body.Bytes(), &csrfBody); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/push/test", strings.NewReader(`{}`))
+	headers(request, "operator")
+	request.AddCookie(cookie)
+	request.Header.Set("Origin", cfg.Origin)
+	request.Header.Set("X-CSRF-Token", csrfBody.Token)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("test push status = %d, body=%q", response.Code, response.Body.String())
+	}
+	sender.mu.Lock()
+	seen := len(sender.seen)
+	sender.mu.Unlock()
+	if seen != store.MaxPushSubscriptionsPerOperator {
+		t.Fatalf("HTTP fanout attempted %d of %d devices", seen, store.MaxPushSubscriptionsPerOperator)
+	}
+}
+
 func TestPushOnlyFiresForSemanticAttentionTransition(t *testing.T) {
 	base, hub, st := testServer(t)
 	defer st.Close()
@@ -864,6 +1089,7 @@ func TestPushOnlyFiresForSemanticAttentionTransition(t *testing.T) {
 	}
 	cfg := base.cfg
 	cfg.Push = &push.Service{Store: st, Sender: sender, MaxAttempts: 1}
+	cfg.VAPIDPublicKey = testVAPIDPublicKey(t)
 	cfg.OperatorSubject = "operator"
 	if _, err := NewServer(cfg, hub); err != nil {
 		t.Fatal(err)
@@ -921,6 +1147,7 @@ func TestPushWorkersAreBounded(t *testing.T) {
 	sender := blockingPushSender{started: make(chan struct{}, 10), release: make(chan struct{})}
 	cfg := base.cfg
 	cfg.Push = &push.Service{Store: st, Sender: sender, MaxAttempts: 1}
+	cfg.VAPIDPublicKey = testVAPIDPublicKey(t)
 	cfg.OperatorSubject = "operator"
 	server, err := NewServer(cfg, hub)
 	if err != nil {
@@ -944,6 +1171,14 @@ func TestPushWorkersAreBounded(t *testing.T) {
 	close(sender.release)
 }
 func mustTestID() string { id, _ := protocol.NewUUIDv7(); return id }
+func testVAPIDPublicKey(t *testing.T) string {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(elliptic.Marshal(elliptic.P256(), key.X, key.Y))
+}
 
 func makeCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	t.Helper()
