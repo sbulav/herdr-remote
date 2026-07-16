@@ -25,6 +25,7 @@ type fakeLocal struct {
 	onSend   func()
 	status   string
 	schema   *herdr.APISchema
+	subs     [][]herdr.SubscriptionSpec
 }
 
 func (f *fakeLocal) Ping(context.Context) (herdr.Ping, error) {
@@ -74,8 +75,9 @@ func (f *fakeLocal) SendChecked(context.Context, herdr.CheckedInput) (herdr.Chec
 	}
 	return herdr.CheckedAck{Enqueued: f.sendErr == nil, InputRevision: f.revision + 1}, f.sendErr
 }
-func (f *fakeLocal) Subscribe(context.Context, []herdr.SubscriptionSpec) (*herdr.Subscription, error) {
+func (f *fakeLocal) Subscribe(_ context.Context, specs []herdr.SubscriptionSpec) (*herdr.Subscription, error) {
 	f.calls = append(f.calls, "subscribe")
+	f.subs = append(f.subs, slices.Clone(specs))
 	return &herdr.Subscription{}, nil
 }
 
@@ -114,6 +116,16 @@ func TestReconciliationOrderAndReadOnly073(t *testing.T) {
 		t.Fatalf("unexpected result: %#v", r)
 	}
 }
+
+func TestReconciliationUsesSupportedHerdrEvents(t *testing.T) {
+	f := &fakeLocal{version: "0.7.3"}
+	_, _ = newEngine(t, f)
+	want := []herdr.SubscriptionSpec{{Type: "pane.created"}, {Type: "pane.closed"}, {Type: "pane.agent_detected"}, {Type: "pane.exited"}}
+	if len(f.subs) != 2 || !slices.Equal(f.subs[0], want) {
+		t.Fatalf("global subscriptions = %#v", f.subs)
+	}
+}
+
 func TestCheckedInputStaleDuplicateAndUnknown(t *testing.T) {
 	f := &fakeLocal{version: "0.8.0", checked: true, revision: 42}
 	e, s := newEngine(t, f)

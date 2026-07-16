@@ -86,7 +86,7 @@ func (e *Engine) Reconcile(ctx context.Context) (protocol.InstanceSnapshot, erro
 	if err != nil {
 		return protocol.InstanceSnapshot{}, err
 	}
-	global, err := e.local.Subscribe(ctx, []herdr.SubscriptionSpec{{Type: "pane.created"}, {Type: "pane.closed"}, {Type: "pane.agent_detected"}, {Type: "pane.agent_exited"}})
+	global, err := e.local.Subscribe(ctx, []herdr.SubscriptionSpec{{Type: "pane.created"}, {Type: "pane.closed"}, {Type: "pane.agent_detected"}, {Type: "pane.exited"}})
 	if err != nil {
 		return protocol.InstanceSnapshot{}, err
 	}
