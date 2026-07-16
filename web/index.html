@@ -53,12 +53,17 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 
 /* Agent list */
 .agents { padding: 12px; }
-.section-header { font-size: 0.65rem; text-transform: uppercase; color: var(--muted); margin: 12px 0 6px; display: flex; align-items: center; gap: 5px; }
-.agent { background: var(--surface); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.agent:active { opacity: 0.7; }
+.section-header { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; display: flex; align-items: center; gap: 5px; }
+.agent { background: var(--surface); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--border); transition: all 0.2s ease; }
+.agent:hover { border-color: color-mix(in srgb, var(--text) 20%, transparent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.agent:active { transform: scale(0.99); box-shadow: none; }
+.agent .dot { width: 10px; height: 10px; }
+.agent.blocked { border-color: var(--red); background: color-mix(in srgb, var(--red) 5%, var(--surface)); }
+.workspace-card { border-color: color-mix(in srgb, var(--text) 10%, transparent); }
+.count-pill { display: inline-block; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: 0.65rem; }
 .agent .info { flex: 1; }
-.agent .project { font-size: 0.85rem; font-weight: 500; }
-.agent .meta { font-size: 0.65rem; color: var(--muted); }
+.agent .project { font-size: 0.9rem; font-weight: 500; }
+.agent .meta { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
 
 /* Terminal view */
 .terminal-view { display: none; flex-direction: column; position: fixed; inset: 0; top: 49px; background: var(--bg); z-index: 50; }
@@ -130,6 +135,12 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
     <div class="theme-grid" id="themeGrid"></div>
   </div>
   <div class="setting-group">
+    <label>Push Notifications</label>
+    <div id="pushStatus" style="font-size:0.75rem;margin-bottom:6px"></div>
+    <button id="pushToggle" onclick="togglePush()">Enable Push</button>
+    <div class="hint">Get notified when agents are blocked, even with this tab closed.</div>
+  </div>
+  <div class="setting-group">
     <label>Status</label>
     <div id="settingsStatus" style="font-size:0.75rem"></div>
   </div>
@@ -177,6 +188,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 const THEMES = ['dark','herdr','light','sand','clay','dune','nord','rose','dracula','kanagawa','midnight'];
 let ws = null, agents = [], activePane = null, refreshInterval = null, userScrolledUp = false;
 let timeline = [], prevStatuses = {};
+let activeWorkspace = null;
 
 // Settings — auto-detect relay when served from same origin
 const autoRelayUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
@@ -322,29 +334,93 @@ function handleMessage(msg) {
 }
 
 function render() {
-  const blocked = agents.filter(a => a.status==='blocked');
-  const working = agents.filter(a => a.status==='working');
-  const done = agents.filter(a => a.status==='done');
-  const idle = agents.filter(a => a.status==='idle'||a.status==='unknown');
   document.getElementById('agentCount').textContent = agents.length ? `${agents.length}` : '';
+  // Get unique workspaces
+  const workspaces = [...new Set(agents.map(a => a.workspace_id).filter(Boolean))];
+  
+  // If only one workspace or none have workspace_id, skip drill-down
+  if (workspaces.length <= 1) {
+    activeWorkspace = null;
+    renderAgentList(agents);
+    return;
+  }
+  
+  if (activeWorkspace === null) {
+    renderWorkspaces(workspaces);
+  } else {
+    const filtered = agents.filter(a => a.workspace_id === activeWorkspace);
+    renderAgentList(filtered, true);
+  }
+}
+
+function renderWorkspaces(workspaces) {
   let html = '';
-  if (blocked.length) html += section('Blocked', 'var(--red)', blocked);
-  if (working.length) html += section('Working', 'var(--green)', working);
-  if (done.length) html += section('Done', 'var(--accent)', done);
-  if (idle.length) html += section('Idle', 'var(--muted)', idle);
+  // Hoist blocked agents above workspaces (collie "Needs you" pattern)
+  const blocked = agents.filter(a => a.status === 'blocked');
+  if (blocked.length) {
+    html += `<div class="section-header" style="color:var(--red)"><span class="dot" style="background:var(--red)"></span>Needs you <span style="opacity:0.6">(${blocked.length})</span></div>`;
+    html += blocked.map(a => agentCard(a)).join('');
+  }
+  html += `<div class="section-header">Spaces <span style="opacity:0.6">(${workspaces.length})</span></div>`;
+  for (const wsId of workspaces) {
+    const wsAgents = agents.filter(a => a.workspace_id === wsId);
+    const blockedCount = wsAgents.filter(a => a.status === 'blocked').length;
+    const workingCount = wsAgents.filter(a => a.status === 'working').length;
+    const tabCount = new Set(wsAgents.map(a => a.tab_id).filter(Boolean)).size;
+    const name = wsAgents[0]?.project || wsId.slice(0, 8);
+    html += `<div class="agent workspace-card" onclick="selectWorkspace('${wsId}')">
+      <span class="dot" style="background:${blockedCount?'var(--red)':workingCount?'var(--green)':'var(--muted)'}"></span>
+      <div class="info">
+        <div class="project">${name}</div>
+        <div class="meta"><span class="count-pill">${wsAgents.length} panes</span>${tabCount ? ` <span class="count-pill">${tabCount} tabs</span>` : ''} · ${blockedCount ? `<span style="color:var(--red)">${blockedCount} blocked</span>` : workingCount ? `<span style="color:var(--green)">${workingCount} working</span>` : 'idle'}</div>
+      </div>
+      <span style="color:var(--muted);font-size:1.2rem">›</span>
+    </div>`;
+  }
+  // Show agents without workspace_id
+  const noWs = agents.filter(a => !a.workspace_id);
+  if (noWs.length) {
+    html += '<div class="section-header">Other</div>';
+    html += noWs.map(a => agentCard(a)).join('');
+  }
   if (!agents.length) html = '<div class="empty">Waiting for agents…</div>';
   document.getElementById('agents').innerHTML = html;
 }
 
+function renderAgentList(list, showBack) {
+  const blocked = list.filter(a => a.status==='blocked');
+  const working = list.filter(a => a.status==='working');
+  const done = list.filter(a => a.status==='done');
+  const idle = list.filter(a => a.status==='idle'||a.status==='unknown');
+  let html = '';
+  if (showBack) {
+    html += `<div class="section-header" style="cursor:pointer" onclick="backToWorkspaces()"><span style="font-size:1rem">‹</span> All Workspaces</div>`;
+  }
+  if (blocked.length) html += section('Blocked', 'var(--red)', blocked);
+  if (working.length) html += section('Working', 'var(--green)', working);
+  if (done.length) html += section('Done', 'var(--accent)', done);
+  if (idle.length) html += section('Idle', 'var(--muted)', idle);
+  if (!list.length) html = '<div class="empty">No agents in this workspace</div>';
+  document.getElementById('agents').innerHTML = html;
+}
+
+function selectWorkspace(id) { activeWorkspace = id; render(); }
+function backToWorkspaces() { activeWorkspace = null; render(); }
+
+function agentCard(a) {
+  const color = a.status==='blocked'?'var(--red)':a.status==='working'?'var(--green)':'var(--muted)';
+  const host = a.host&&a.host!=='local'?` <span style="color:var(--orange);font-size:0.6rem">@${a.host}</span>`:'';
+  const cwd = a.cwd ? `<span style="font-family:monospace;opacity:0.7">${a.cwd.split('/').slice(-2).join('/')}</span>` : '';
+  return `<div class="agent${a.status==='blocked'?' blocked':''}" onclick="openTerminal('${a.pane_id}')">
+    <span class="dot" style="background:${color}"></span>
+    <div class="info"><div class="project">${a.label||a.project||a.agent}${host}</div><div class="meta">${a.agent} · ${cwd}</div></div>
+    <span style="color:var(--muted);font-size:1.2rem">›</span>
+  </div>`;
+}
+
 function section(title, color, list) {
   return `<div class="section-header"><span class="dot" style="background:${color}"></span>${title}</div>` +
-    list.map(a => {
-      const host = a.host&&a.host!=='local'?` <span style="color:var(--orange);font-size:0.6rem">@${a.host}</span>`:'';
-      return `<div class="agent" onclick="openTerminal('${a.pane_id}')">
-        <span class="dot" style="background:${color}"></span>
-        <div class="info"><div class="project">${a.label||a.project||a.agent}${host}</div><div class="meta">${a.agent} · ${a.status}</div></div>
-      </div>`;
-    }).join('');
+    list.map(a => agentCard(a)).join('');
 }
 
 function openTerminal(paneId) {
@@ -400,6 +476,84 @@ document.getElementById('termContent').addEventListener('scroll', function() {
 });
 
 if (savedUrl) setTimeout(connect, 100); else showSetup();
+
+// --- Web Push ---
+let pushSubscription = null;
+
+async function initPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    document.getElementById('pushStatus').textContent = 'Push not supported in this browser';
+    document.getElementById('pushToggle').style.display = 'none';
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    pushSubscription = await reg.pushManager.getSubscription();
+    updatePushUI();
+  } catch (e) {
+    document.getElementById('pushStatus').textContent = 'Service worker error: ' + e.message;
+  }
+}
+
+function updatePushUI() {
+  const btn = document.getElementById('pushToggle');
+  const status = document.getElementById('pushStatus');
+  if (pushSubscription) {
+    btn.textContent = 'Disable Push';
+    btn.style.background = 'var(--red)';
+    status.innerHTML = '<span style="color:var(--green)">● Enabled</span>';
+  } else {
+    btn.textContent = 'Enable Push';
+    btn.style.background = 'var(--green)';
+    status.innerHTML = '<span style="color:var(--muted)">○ Disabled</span>';
+  }
+}
+
+async function togglePush() {
+  if (pushSubscription) {
+    // Unsubscribe
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({type: 'push_unsubscribe', subscription: pushSubscription.toJSON()}));
+    }
+    await pushSubscription.unsubscribe();
+    pushSubscription = null;
+    updatePushUI();
+  } else {
+    // Subscribe
+    try {
+      const relayUrl = localStorage.getItem('herdr_relay_url') || '';
+      const httpUrl = relayUrl.replace('wss://', 'https://').replace('ws://', 'http://');
+      const resp = await fetch(httpUrl + '/api/vapid-public-key');
+      const {publicKey} = await resp.json();
+      if (!publicKey) {
+        document.getElementById('pushStatus').textContent = 'VAPID key not configured on relay';
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      pushSubscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({type: 'push_subscribe', subscription: pushSubscription.toJSON()}));
+      }
+      updatePushUI();
+    } catch (e) {
+      document.getElementById('pushStatus').textContent = 'Error: ' + e.message;
+    }
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+initPush();
 </script>
 </body>
 </html>

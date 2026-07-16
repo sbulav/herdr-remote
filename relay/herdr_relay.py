@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["websockets>=14.0", "zeroconf>=0.80.0"]
+# dependencies = ["websockets>=14.0", "zeroconf>=0.80.0", "pywebpush>=2.0.0", "py-vapid>=1.9.0"]
 # ///
 """herdr-remote relay — polls herdr, accepts push events (HTTP POST + WebSocket + UDP), broadcasts to clients."""
 import asyncio, json, logging, os, re, signal, socket, subprocess, time
@@ -25,6 +25,7 @@ def _get_log_dir():
 LOG_DIR = os.environ.get("HERDR_LOG_DIR", _get_log_dir())
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "relay.log")
+AUDIT_FILE = os.path.join(LOG_DIR, "audit.log")
 
 _formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 _file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
@@ -42,6 +43,13 @@ HERDR = os.environ.get("HERDR_BIN", "/opt/homebrew/bin/herdr")
 WS_PORT = int(os.environ.get("HERDR_RELAY_PORT", "8375"))
 POLL_INTERVAL = 2
 AUTH_TOKEN = os.environ.get("HERDR_RELAY_TOKEN", "")  # Optional: shared secret for relay auth
+
+# VAPID Web Push
+VAPID_PUBLIC_KEY = os.environ.get("HERDR_VAPID_PUBLIC", "")
+VAPID_PRIVATE_KEY = os.environ.get("HERDR_VAPID_PRIVATE", "")
+VAPID_SUBJECT = os.environ.get("HERDR_VAPID_SUBJECT", "mailto:herdr@localhost")
+push_subscriptions = []  # list of PushSubscription dicts
+PUSH_SUBS_FILE = os.path.join(LOG_DIR, "push_subs.json")
 
 # Remote hosts: comma-separated SSH targets
 REMOTES = [r.strip() for r in os.environ.get("HERDR_REMOTES", "").split(",") if r.strip()]
@@ -64,6 +72,85 @@ known_panes = set()
 
 SAFE_RESPONSES = {"y", "n", "a", "yes", "no", "trust", "yes, single permission", "trust, always allow", "no (tab to edit)", "approve all pending", "configure individually", "exit (cancel subagents)"}
 SAFE_KEYS = {"y", "n", "a", "Enter", "Tab", "Escape", "C-c", "Up", "Down", "Left", "Right", "BSpace"}
+
+# --- Audit logging ---
+_audit_handler = RotatingFileHandler(AUDIT_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
+_audit_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S"))
+audit_log = logging.getLogger("herdr-audit")
+audit_log.setLevel(logging.INFO)
+audit_log.addHandler(_audit_handler)
+audit_log.propagate = False
+
+
+def audit(action: str, ip: str, device: str, pane_id: str, detail: str = ""):
+    """Append a write action to the audit log as structured JSONL."""
+    import datetime
+    entry = {
+        "ts": datetime.datetime.utcnow().isoformat() + "Z",
+        "action": action,
+        "paneId": pane_id,
+        "ip": ip,
+        "device": device,
+    }
+    if detail:
+        entry["detail"] = detail[:120]  # truncate like collie
+    audit_log.info(json.dumps(entry, separators=(",", ":")))
+
+
+# --- Web Push helpers ---
+def _load_push_subs():
+    global push_subscriptions
+    if os.path.isfile(PUSH_SUBS_FILE):
+        try:
+            with open(PUSH_SUBS_FILE) as f:
+                push_subscriptions = json.load(f)
+        except Exception:
+            push_subscriptions = []
+
+
+def _save_push_subs():
+    with open(PUSH_SUBS_FILE, "w") as f:
+        json.dump(push_subscriptions, f)
+
+
+async def send_web_push(title: str, body: str, url: str = "/", clear: bool = False):
+    """Send push notification to all registered subscriptions.
+    
+    Uses collapse topic + TTL so offline devices get only the latest.
+    If clear=True, sends a clear instruction instead of showing a notification.
+    """
+    if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+        return
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        log.warning("pywebpush not installed, skipping push")
+        return
+    if clear:
+        payload = json.dumps({"type": "clear", "tag": "herdr-blocked"})
+    else:
+        payload = json.dumps({"title": title, "body": body, "url": url})
+    headers = {"Topic": "herdr-herd", "TTL": "21600"}  # 6h TTL, collapse key
+    dead = []
+    for i, sub in enumerate(push_subscriptions):
+        try:
+            webpush(
+                subscription_info=sub,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_SUBJECT},
+                headers=headers,
+            )
+        except Exception as e:
+            log.warning("Push failed for sub %d: %s", i, e)
+            if "410" in str(e) or "404" in str(e):
+                dead.append(i)
+    if dead:
+        for i in reversed(dead):
+            push_subscriptions.pop(i)
+        _save_push_subs()
+
+_load_push_subs()
 
 
 def run_herdr(*args, remote=None):
@@ -94,6 +181,8 @@ def get_agents_from_host(remote=None):
                 "project": os.path.basename(p.get("cwd", "")),
                 "host": host_label,
                 "remote": remote,
+                "workspace_id": p.get("workspace_id", ""),
+                "tab_id": p.get("tab_id", ""),
             }
             for p in panes if p.get("agent")
         ]
@@ -158,6 +247,15 @@ async def poll_loop():
                     "prompt": content[:500],
                     "options": options or TOOL_OPTIONS
                 })
+                # Web Push notification
+                await send_web_push(
+                    title=f"🐑 {a['project']} blocked",
+                    body=content[:120],
+                    url=f"/?pane={pid}",
+                )
+            # Send clear push when agent unblocks
+            if status != "blocked" and last_statuses.get(pid) == "blocked":
+                await send_web_push("", "", clear=True)
             last_statuses[pid] = status
         # Clean up panes that are no longer reported
         current_pane_ids = {a["pane_id"] for a in agents}
@@ -258,6 +356,39 @@ async def process_request(connection, request):
             ])
             return Response(200, "OK", headers, body)
 
+    # Serve service worker
+    if path == "/sw.js":
+        web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+        sw_path = os.path.join(web_dir, "sw.js")
+        if os.path.isfile(sw_path):
+            with open(sw_path, "rb") as f:
+                body = f.read()
+            headers = Headers([
+                ("Content-Type", "application/javascript"),
+                ("Cache-Control", "no-cache"),
+                ("Service-Worker-Allowed", "/"),
+            ])
+            return Response(200, "OK", headers, body)
+
+    # Serve VAPID public key
+    if path == "/api/vapid-public-key":
+        body = json.dumps({"publicKey": VAPID_PUBLIC_KEY}).encode()
+        headers = Headers([
+            ("Content-Type", "application/json"),
+            ("Access-Control-Allow-Origin", "*"),
+        ])
+        return Response(200, "OK", headers, body)
+
+    # Serve logo.svg
+    if path == "/logo.svg":
+        web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+        svg_path = os.path.join(web_dir, "logo.svg")
+        if os.path.isfile(svg_path):
+            with open(svg_path, "rb") as f:
+                body = f.read()
+            headers = Headers([("Content-Type", "image/svg+xml")])
+            return Response(200, "OK", headers, body)
+
     # HTTP POST — parse event from URL query params as fallback
     import urllib.parse
     if "?" in (request.path or ""):
@@ -318,6 +449,7 @@ async def handle_client(ws):
                     continue
                 remote = pane_remote_map.get(pane_id)
                 log.info("Response from %s (%s): pane=%s text=%r", ip, device, pane_id, text)
+                audit("respond", ip, device, pane_id, f"text={text!r}")
                 run_herdr("pane", "send-text", pane_id, text + "\n", remote=remote)
             elif msg_type == "agent_event":
                 event_queue.put_nowait(msg)
@@ -341,6 +473,7 @@ async def handle_client(ws):
                     continue
                 remote = pane_remote_map.get(pane_id)
                 log.info("Keys from %s (%s): pane=%s keys=%s", ip, device, pane_id, keys)
+                audit("send_keys", ip, device, pane_id, f"keys={keys}")
                 run_herdr("pane", "send-keys", pane_id, *keys, remote=remote)
             elif msg_type == "send_text":
                 pane_id = msg["pane_id"]
@@ -353,7 +486,21 @@ async def handle_client(ws):
                     continue
                 remote = pane_remote_map.get(pane_id)
                 log.info("Text from %s (%s): pane=%s text=%r", ip, device, pane_id, text)
+                audit("send_text", ip, device, pane_id, f"text={text!r}")
                 run_herdr("pane", "send-text", pane_id, text, remote=remote)
+            elif msg_type == "push_subscribe":
+                sub = msg.get("subscription")
+                if sub and sub not in push_subscriptions:
+                    push_subscriptions.append(sub)
+                    _save_push_subs()
+                    log.info("Push subscription added from %s (%s)", ip, device)
+                await ws.send(json.dumps({"type": "push_subscribed", "ok": True}))
+            elif msg_type == "push_unsubscribe":
+                sub = msg.get("subscription")
+                if sub and sub in push_subscriptions:
+                    push_subscriptions.remove(sub)
+                    _save_push_subs()
+                await ws.send(json.dumps({"type": "push_unsubscribed", "ok": True}))
     except (ConnectionClosedError, ConnectionClosedOK):
         pass
     finally:

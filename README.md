@@ -11,7 +11,7 @@ Download [Herdi.app](https://github.com/dcolinmorgan/herdr-remote/releases/lates
 Monitors all your local herdr agents automatically -- no relay, no config, no account.
 
 ```bash
-curl -sL https://github.com/dcolinmorgan/herdr-remote/releases/latest/download/Herdi-0.5.0.dmg -o /tmp/Herdi.dmg && open /tmp/Herdi.dmg
+curl -sL https://github.com/dcolinmorgan/herdr-remote/releases/latest/download/Herdi-0.6.0.dmg -o /tmp/Herdi.dmg && open /tmp/Herdi.dmg
 ```
 
 ## What you get
@@ -112,3 +112,18 @@ uv run relay/herdr_relay.py
 - `cloudflared` (for remote access)
 - herdr 0.7+
 - Zero-dep plugin: [`herdr-push`](https://github.com/dcolinmorgan/herdr-push)
+
+## Changelog
+
+### v0.6.0
+
+- **Workspace drill-down** — agents grouped by workspace/space; blocked "Needs you" agents hoisted to top of dashboard before workspace cards
+- **Prettier cards** — shadcn-style: 12px radius, subtle borders, hover lift/shadow, `active:scale(0.99)`, cwd display, chevron navigation
+- **Web Push (VAPID)** — subscribe in Settings; get notified when agents block even with tab closed; auto-clears when agent unblocks
+- **Structured audit log** — all write actions (respond, send_text, send_keys) logged as JSONL to `~/Library/Logs/herdr-remote/audit.log`
+- **Push collapse + TTL** — offline devices get only the latest notification (Topic: `herdr-herd`, TTL: 6h), not a burst of stale alerts
+- **Count pills** — workspace cards show pane/tab counts at a glance
+
+### v0.5.0
+
+Telegram bot (`/agents /read /send /reply /trust /interrupt`), demo bot, linux setup script.
