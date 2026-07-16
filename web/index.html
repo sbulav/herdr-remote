@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;herdr-remote&quot;,&quot;short_name&quot;:&quot;herdr&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%230a0a0a&quot;,&quot;theme_color&quot;:&quot;%230a0a0a&quot;}">
@@ -27,12 +27,41 @@
   --bg: #191724; --surface: #1f1d2e; --border: #26233a; --text: #e0def4; --muted: #908caa;
   --green: #9ccfd8; --red: #eb6f92; --blue: #c4a7e7; --orange: #f6c177;
 }
+[data-theme="herdr"] {
+  --bg: #0f1419; --surface: #1a2027; --border: #2a3540; --text: #d4dce4; --muted: #7a8a99;
+  --green: #4ade80; --red: #f87171; --blue: #60a5fa; --orange: #fb923c;
+}
+[data-theme="sand"] {
+  --bg: #f5f0e8; --surface: #faf7f2; --border: #e0d8cc; --text: #3d3529; --muted: #8c7e6a;
+  --green: #6b8f4a; --red: #c4533b; --blue: #4a7fb5; --orange: #c77d35;
+}
+[data-theme="clay"] {
+  --bg: #1c1917; --surface: #292524; --border: #3d3533; --text: #e7e0dc; --muted: #a39e9a;
+  --green: #86efac; --red: #fca5a5; --blue: #93c5fd; --orange: #fdba74;
+}
+[data-theme="dune"] {
+  --bg: #1a1610; --surface: #25201a; --border: #3a3228; --text: #e8dfd4; --muted: #9c8e7c;
+  --green: #a7c957; --red: #e07a5f; --blue: #81b4d8; --orange: #dda15e;
+}
+[data-theme="dracula"] {
+  --bg: #282a36; --surface: #343746; --border: #44475a; --text: #f8f8f2; --muted: #6272a4;
+  --green: #50fa7b; --red: #ff5555; --blue: #8be9fd; --orange: #ffb86c;
+}
+[data-theme="kanagawa"] {
+  --bg: #1f1f28; --surface: #2a2a37; --border: #363646; --text: #dcd7ba; --muted: #727169;
+  --green: #98bb6c; --red: #e82424; --blue: #7e9cd8; --orange: #ffa066;
+}
+[data-theme="midnight"] {
+  --bg: #020617; --surface: #0f172a; --border: #1e293b; --text: #e2e8f0; --muted: #64748b;
+  --green: #34d399; --red: #f43f5e; --blue: #38bdf8; --orange: #fb923c;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
+*:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
 body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; }
 
 .header { padding: 12px 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
 .header h1 { font-size: 1rem; flex: 1; }
-.header button { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 4px; }
+.header button { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 10px; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 .view { flex: 1; overflow-y: auto; }
@@ -54,7 +83,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 /* Agent list */
 .agents { padding: 12px; }
 .section-header { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; display: flex; align-items: center; gap: 5px; }
-.agent { background: var(--surface); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--border); transition: all 0.2s ease; }
+.agent { background: var(--surface); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--border); transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
 .agent:hover { border-color: color-mix(in srgb, var(--text) 20%, transparent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 .agent:active { transform: scale(0.99); box-shadow: none; }
 .agent .dot { width: 10px; height: 10px; }
@@ -72,7 +101,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .term-header .back { background: none; border: none; color: var(--blue); font-size: 1.4rem; cursor: pointer; padding: 4px 8px; }
 .term-header .title { flex: 1; font-size: 0.8rem; font-weight: 500; }
 .term-header .refresh-btn { background: none; border: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; }
-.term-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px; background: #000; font-family: 'SF Mono', 'Menlo', monospace; font-size: 0.8rem; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; word-break: break-all; color: #ccc; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.term-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px; background: color-mix(in srgb, var(--bg) 90%, black); font-family: 'SF Mono', 'Menlo', monospace; font-size: 0.8rem; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; word-break: break-all; color: var(--text); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .quick-actions { padding: 8px 12px; border-top: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
 .quick-actions button { padding: 10px 14px; border-radius: 8px; border: none; font-size: 0.75rem; font-weight: 600; cursor: pointer; flex: 1; min-width: 70px; }
 .btn-yes { background: var(--green); color: #000; } .btn-trust { background: var(--blue); color: #fff; } .btn-no { background: var(--red); color: #fff; }
@@ -80,7 +109,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .term-input input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 14px; font-family: monospace; min-width: 0; }
 .term-input button { padding: 10px 14px; border-radius: 6px; border: none; background: var(--blue); color: #fff; font-weight: 700; font-size: 16px; flex-shrink: 0; }
 .term-keys { border-top: 1px solid var(--border); padding: 6px 8px; display: flex; gap: 4px; background: var(--surface); flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom, 6px); align-items: center; overflow-x: auto; }
-.term-keys button { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.term-keys button { padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap; min-height: 44px; }
 .term-keys button:active { background: var(--border); }
 .term-keys button.key-green { border-color: var(--green); color: var(--green); }
 .term-keys button.key-blue { border-color: var(--blue); color: var(--blue); }
@@ -116,16 +145,16 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
   <span class="dot" id="statusDot"></span>
   <h1>🐑 herdr</h1>
   <span id="agentCount" style="font-size:0.7rem;color:var(--muted)"></span>
-  <button onclick="toggleTimeline()">🕐</button>
-  <button onclick="toggleSettings()">⚙</button>
+  <button onclick="toggleTimeline()" aria-label="Timeline">🕐</button>
+  <button onclick="toggleSettings()" aria-label="Settings">⚙</button>
 </div>
 
 <div class="settings" id="settingsView">
   <h2>Settings</h2>
   <div class="setting-group">
-    <label>Relay URL</label>
+    <label for="relayUrl">Relay URL</label>
     <input id="relayUrl" type="url" placeholder="wss://your-tunnel.trycloudflare.com" />
-    <label style="margin-top:8px">Token (optional)</label>
+    <label for="relayToken" style="margin-top:8px">Token (optional)</label>
     <input id="relayToken" type="password" placeholder="shared secret" />
     <button onclick="saveAndConnect()">Connect</button>
     <div class="hint">Run <code>./relay/start.sh</code> to get a URL. <a href="https://github.com/dcolinmorgan/herdr-remote/blob/main/QUICKSTART.md" style="color:var(--blue)">Setup guide →</a></div>
@@ -156,9 +185,9 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 
 <div class="terminal-view" id="terminalView">
   <div class="term-header">
-    <button class="back" onclick="closeTerminal()">‹</button>
+    <button class="back" onclick="closeTerminal()" aria-label="Back to agent list">‹</button>
     <span class="title" id="termTitle"></span>
-    <button class="refresh-btn" onclick="refreshPane()">↻</button>
+    <button class="refresh-btn" onclick="refreshPane()" aria-label="Refresh pane">↻</button>
   </div>
   <div class="term-content" id="termContent">Loading…</div>
   <div class="quick-actions" id="quickActions"></div>
@@ -193,7 +222,9 @@ let activeWorkspace = null;
 // Settings — auto-detect relay when served from same origin
 const autoRelayUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 const isServedFromRelay = !location.hostname.includes('pages.dev') && !location.hostname.includes('localhost');
-const savedUrl = localStorage.getItem('herdr_relay_url') || (isServedFromRelay ? autoRelayUrl : '');
+const DEMO_RELAY = 'wss://herdr-remote-demo.yyrzrh5wfg.workers.dev';
+const isDemo = location.hostname.includes('herdr-demo.pages.dev');
+const savedUrl = localStorage.getItem('herdr_relay_url') || (isServedFromRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
 const savedTheme = localStorage.getItem('herdr_theme') || 'nord';
 const savedToken = localStorage.getItem('herdr_relay_token') || '';
 document.getElementById('relayUrl').value = savedUrl;
@@ -368,7 +399,7 @@ function renderWorkspaces(workspaces) {
     const workingCount = wsAgents.filter(a => a.status === 'working').length;
     const tabCount = new Set(wsAgents.map(a => a.tab_id).filter(Boolean)).size;
     const name = wsAgents[0]?.project || wsId.slice(0, 8);
-    html += `<div class="agent workspace-card" onclick="selectWorkspace('${wsId}')">
+    html += `<div class="agent workspace-card" role="button" tabindex="0" aria-label="${name} workspace" onclick="selectWorkspace('${wsId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectWorkspace('${wsId}')}">
       <span class="dot" style="background:${blockedCount?'var(--red)':workingCount?'var(--green)':'var(--muted)'}"></span>
       <div class="info">
         <div class="project">${name}</div>
@@ -411,10 +442,11 @@ function agentCard(a) {
   const color = a.status==='blocked'?'var(--red)':a.status==='working'?'var(--green)':'var(--muted)';
   const host = a.host&&a.host!=='local'?` <span style="color:var(--orange);font-size:0.6rem">@${a.host}</span>`:'';
   const cwd = a.cwd ? `<span style="font-family:monospace;opacity:0.7">${a.cwd.split('/').slice(-2).join('/')}</span>` : '';
-  return `<div class="agent${a.status==='blocked'?' blocked':''}" onclick="openTerminal('${a.pane_id}')">
-    <span class="dot" style="background:${color}"></span>
-    <div class="info"><div class="project">${a.label||a.project||a.agent}${host}</div><div class="meta">${a.agent} · ${cwd}</div></div>
-    <span style="color:var(--muted);font-size:1.2rem">›</span>
+  const label = a.label||a.project||a.agent;
+  return `<div class="agent${a.status==='blocked'?' blocked':''}" role="button" tabindex="0" aria-label="${label}, ${a.status}" onclick="openTerminal('${a.pane_id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openTerminal('${a.pane_id}')}">
+    <span class="dot" style="background:${color}" aria-hidden="true"></span>
+    <div class="info"><div class="project">${label}${host}</div><div class="meta">${a.agent} · ${cwd}</div></div>
+    <span style="color:var(--muted);font-size:1.2rem" aria-hidden="true">›</span>
   </div>`;
 }
 
