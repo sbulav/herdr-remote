@@ -9,52 +9,10 @@
 <title>herdr-remote</title>
 <style>
 :root {
-  --bg: #0a0a0a; --surface: #1a1a1a; --border: #222; --text: #e5e5e5; --muted: #888;
-  --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --orange: #f97316;
-}
-[data-theme="light"] {
-  --bg: #f5f5f5; --surface: #fff; --border: #ddd; --text: #1a1a1a; --muted: #666;
-}
-[data-theme="nord"] {
-  --bg: #2e3440; --surface: #3b4252; --border: #434c5e; --text: #eceff4; --muted: #8fbcbb;
-  --green: #a3be8c; --red: #bf616a; --blue: #81a1c1; --orange: #d08770;
-}
-[data-theme="solarized"] {
-  --bg: #002b36; --surface: #073642; --border: #586e75; --text: #839496; --muted: #657b83;
-  --green: #859900; --red: #dc322f; --blue: #268bd2; --orange: #cb4b16;
-}
-[data-theme="rose"] {
-  --bg: #191724; --surface: #1f1d2e; --border: #26233a; --text: #e0def4; --muted: #908caa;
-  --green: #9ccfd8; --red: #eb6f92; --blue: #c4a7e7; --orange: #f6c177;
-}
-[data-theme="herdr"] {
   --bg: #1a1b26; --surface: #24283b; --border: #3b4261; --text: #c0caf5; --muted: #565f89;
   --green: #9ece6a; --red: #f7768e; --blue: #7aa2f7; --orange: #ff9e64;
 }
-[data-theme="sand"] {
-  --bg: #f5f0e8; --surface: #faf7f2; --border: #e0d8cc; --text: #3d3529; --muted: #8c7e6a;
-  --green: #6b8f4a; --red: #c4533b; --blue: #4a7fb5; --orange: #c77d35;
-}
-[data-theme="clay"] {
-  --bg: #1c1917; --surface: #292524; --border: #3d3533; --text: #e7e0dc; --muted: #a39e9a;
-  --green: #86efac; --red: #fca5a5; --blue: #93c5fd; --orange: #fdba74;
-}
-[data-theme="dune"] {
-  --bg: #1a1610; --surface: #25201a; --border: #3a3228; --text: #e8dfd4; --muted: #9c8e7c;
-  --green: #a7c957; --red: #e07a5f; --blue: #81b4d8; --orange: #dda15e;
-}
-[data-theme="dracula"] {
-  --bg: #282a36; --surface: #343746; --border: #44475a; --text: #f8f8f2; --muted: #6272a4;
-  --green: #50fa7b; --red: #ff5555; --blue: #8be9fd; --orange: #ffb86c;
-}
-[data-theme="kanagawa"] {
-  --bg: #1f1f28; --surface: #2a2a37; --border: #363646; --text: #dcd7ba; --muted: #727169;
-  --green: #98bb6c; --red: #e82424; --blue: #7e9cd8; --orange: #ffa066;
-}
-[data-theme="midnight"] {
-  --bg: #020617; --surface: #0f172a; --border: #1e293b; --text: #e2e8f0; --muted: #64748b;
-  --green: #34d399; --red: #f43f5e; --blue: #38bdf8; --orange: #fb923c;
-}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 *:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
 body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; }
@@ -76,9 +34,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .setting-group select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; }
 .setting-group .hint { font-size: 0.65rem; color: var(--muted); margin-top: 4px; }
 .setting-group button { margin-top: 8px; padding: 8px 16px; border-radius: 6px; border: none; background: var(--green); color: #000; font-weight: 600; font-size: 13px; cursor: pointer; }
-.theme-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.theme-btn { padding: 8px; border-radius: 6px; border: 2px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.7rem; cursor: pointer; text-align: center; }
-.theme-btn.active { border-color: var(--green); }
+
 
 /* Agent list */
 .agents { padding: 12px; }
@@ -159,10 +115,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
     <button onclick="saveAndConnect()">Connect</button>
     <div class="hint">Run <code>./relay/start.sh</code> to get a URL. <a href="https://github.com/dcolinmorgan/herdr-remote/blob/main/QUICKSTART.md" style="color:var(--blue)">Setup guide →</a></div>
   </div>
-  <div class="setting-group">
-    <label>Theme</label>
-    <div class="theme-grid" id="themeGrid"></div>
-  </div>
+
   <div class="setting-group">
     <label>Push Notifications</label>
     <div id="pushStatus" style="font-size:0.75rem;margin-bottom:6px"></div>
@@ -228,7 +181,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 </div>
 
 <script>
-const THEMES = ['dark','herdr','light','sand','clay','dune','nord','rose','dracula','kanagawa','midnight'];
+
 let ws = null, agents = [], activePane = null, refreshInterval = null, userScrolledUp = false;
 let timeline = [], prevStatuses = {};
 let activeWorkspace = null;
@@ -239,24 +192,11 @@ const isServedFromRelay = !location.hostname.includes('pages.dev') && !location.
 const DEMO_RELAY = 'wss://herdr-remote-demo.yyrzrh5wfg.workers.dev';
 const isDemo = location.hostname.includes('herdr-demo.pages.dev');
 const savedUrl = localStorage.getItem('herdr_relay_url') || (isServedFromRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
-const savedTheme = localStorage.getItem('herdr_theme') || 'herdr';
 const savedToken = localStorage.getItem('herdr_relay_token') || '';
 document.getElementById('relayUrl').value = savedUrl;
 document.getElementById('relayToken').value = savedToken;
-applyTheme(savedTheme);
 
-function applyTheme(t) {
-  document.documentElement.setAttribute('data-theme', t);
-  localStorage.setItem('herdr_theme', t);
-  renderThemeGrid();
-}
-function renderThemeGrid() {
-  const cur = localStorage.getItem('herdr_theme') || 'dark';
-  document.getElementById('themeGrid').innerHTML = THEMES.map(t =>
-    `<button class="theme-btn ${t===cur?'active':''}" onclick="applyTheme('${t}')">${t}</button>`
-  ).join('');
-}
-renderThemeGrid();
+
 
 function toggleSettings() {
   const s = document.getElementById('settingsView');
