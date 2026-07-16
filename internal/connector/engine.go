@@ -59,7 +59,6 @@ type Engine struct {
 	lastRate           time.Time
 	statePublisher     func(protocol.InstanceSnapshot) error
 	deltaPublisher     func(protocol.StateDelta) error
-	failureHandler     func(error)
 }
 
 type statePublishError struct{ err error }
@@ -457,11 +456,6 @@ func (e *Engine) SetDeltaPublisher(publish func(protocol.StateDelta) error) {
 	e.deltaPublisher = publish
 	e.mu.Unlock()
 }
-func (e *Engine) SetFailureHandler(handler func(error)) {
-	e.mu.Lock()
-	e.failureHandler = handler
-	e.mu.Unlock()
-}
 
 type Response struct {
 	Received bool
@@ -712,12 +706,6 @@ func (e *Engine) StartOutput(parent context.Context, s protocol.OutputSubscribe,
 		last := ""
 		for {
 			if err := e.pollOutput(ctx, s, &last, publish); err != nil {
-				e.mu.RLock()
-				handler := e.failureHandler
-				e.mu.RUnlock()
-				if handler != nil {
-					handler(err)
-				}
 				return
 			}
 			select {

@@ -22,6 +22,7 @@ type fakeLocal struct {
 	calls    []string
 	sendErr  error
 	reads    int
+	readErr  error
 	onSend   func()
 	status   string
 	schema   *herdr.APISchema
@@ -51,6 +52,9 @@ func (f *fakeLocal) Read(context.Context, string, string, int) (herdr.PaneRead, 
 	f.mu.Lock()
 	f.reads++
 	f.mu.Unlock()
+	if f.readErr != nil {
+		return herdr.PaneRead{}, f.readErr
+	}
 	return herdr.PaneRead{Read: herdr.ReadData{Text: "output", Revision: f.revision, InputRevision: f.revision, ContentHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}, nil
 }
 func (f *fakeLocal) ReadAgent(ctx context.Context, target, source string, lines int) (herdr.PaneRead, error) {
@@ -314,6 +318,27 @@ func TestOutputRevisionMismatchReconcilesAndReadsAgain(t *testing.T) {
 	}
 	if published != 1 || output.HerdrInputRevision != 43 {
 		t.Fatalf("published=%d output=%#v", published, output)
+	}
+}
+func TestOutputReadFailureStopsOnlySubscription(t *testing.T) {
+	f := &fakeLocal{version: "0.7.3-checked.1", checked: true, revision: 42, readErr: errors.New("transient read failure")}
+	e, _ := newEngine(t, f)
+	epoch := e.Snapshot().ConnectorEpoch
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := e.StartOutput(ctx, protocol.OutputSubscribe{SubscriptionID: mustID(), Target: protocol.Target{HostID: testHost, InstanceID: "default", TerminalID: "term"}, Source: "recent", Lines: 1, PollIntervalMS: 500}, func(protocol.OutputSnapshot) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := e.Snapshot().ConnectorEpoch; got != epoch {
+		t.Fatalf("connector epoch changed: got %q want %q", got, epoch)
+	}
+	f.mu.Lock()
+	reads := f.reads
+	f.mu.Unlock()
+	if reads != 1 {
+		t.Fatalf("reads=%d, want failed subscription to stop after one read", reads)
 	}
 }
 func TestUnchangedPeriodicReconciliationPreservesEpoch(t *testing.T) {

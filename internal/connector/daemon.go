@@ -208,15 +208,6 @@ func (d *Daemon) runOnce(ctx context.Context, offerInventory bool, welcomed func
 		}
 	}()
 	errc := make(chan error, len(d.engines)*3+3)
-	failureHandler := func(err error) {
-		select {
-		case errc <- err:
-		default:
-		}
-	}
-	for _, engine := range d.engines {
-		engine.SetFailureHandler(failureHandler)
-	}
 	go func() {
 		for {
 			b, err := q.Next(runCtx)
@@ -365,10 +356,10 @@ func (d *Daemon) runOnce(ctx context.Context, offerInventory bool, welcomed func
 			}()
 		case *protocol.OutputSubscribe:
 			if len(outputOwners) >= 4 {
-				return errors.New("connector output subscription limit reached")
+				continue
 			}
 			if _, exists := outputOwners[m.SubscriptionID]; exists {
-				return errors.New("duplicate output subscription")
+				continue
 			}
 			engine := d.engines[m.Target.InstanceID]
 			if engine == nil {
@@ -381,7 +372,9 @@ func (d *Daemon) runOnce(ctx context.Context, offerInventory bool, welcomed func
 				}
 				return err
 			}); err != nil {
-				return err
+				// Output is a transient view. A stale or duplicate view request
+				// must not tear down host state or checked actions.
+				continue
 			}
 			outputOwners[m.SubscriptionID] = engine
 		case *protocol.OutputUnsubscribe:
