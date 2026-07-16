@@ -469,6 +469,13 @@ class BrowserProtocolFixtureTests(unittest.TestCase):
         ] = 1
         self.assertNotEqual(self.validator.errors(revised_073), [])
 
+        checked_fork = copy.deepcopy(self.messages[0])
+        fork_instance = checked_fork["body"]["hosts"][0]["instances"][0]
+        fork_instance["herdr_version"] = "0.7.3-checked.1"
+        fork_instance["capabilities"].append("checked_input.v1")
+        fork_instance["agents"][0]["herdr_input_revision"] = 7
+        self.assertEqual(self.validator.errors(checked_fork), [])
+
         revised_prompt_073 = copy.deepcopy(
             next(message for message in self.messages if message["type"] == "prompt.snapshot")
         )

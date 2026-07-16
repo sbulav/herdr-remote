@@ -117,6 +117,19 @@ func TestReconciliationOrderAndReadOnly073(t *testing.T) {
 	}
 }
 
+func TestPatchedForkVersionAdvertisesCheckedInput(t *testing.T) {
+	f := &fakeLocal{version: "0.7.3-checked.1", checked: true, revision: 42}
+	_, s := newEngine(t, f)
+	if !protocol.HasCapability(s.Capabilities, "checked_input.v1") {
+		t.Fatal("patched fork version did not advertise checked input")
+	}
+	exact := &fakeLocal{version: "0.7.3", checked: true}
+	_, s2 := newEngine(t, exact)
+	if protocol.HasCapability(s2.Capabilities, "checked_input.v1") {
+		t.Fatal("exact 0.7.3 advertised writes despite checked capability")
+	}
+}
+
 func TestReconciliationUsesSupportedHerdrEvents(t *testing.T) {
 	f := &fakeLocal{version: "0.7.3"}
 	_, _ = newEngine(t, f)

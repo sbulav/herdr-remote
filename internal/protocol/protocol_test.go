@@ -114,6 +114,12 @@ func TestSessionLogicalUniquenessAndHerdr073(t *testing.T) {
 	if ValidateSessionSnapshot(snap) == nil {
 		t.Fatal("0.7.3 checked input accepted")
 	}
+	inst.HerdrVersion = "0.7.3-checked.1"
+	snap.Hosts[0].Instances = []BrowserInstance{inst}
+	snap.ServerTime = "2026-07-15T08:00:00Z"
+	if err := ValidateSessionSnapshot(snap); err != nil {
+		t.Fatalf("patched fork version rejected: %v", err)
+	}
 }
 func TestConnectorDeltaRejectsDuplicateAndMalformedChanges(t *testing.T) {
 	epoch := "019f64ca-3000-7000-8000-000000000110"

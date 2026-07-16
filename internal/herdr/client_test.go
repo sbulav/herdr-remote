@@ -47,6 +47,11 @@ func TestCheckedCapabilityRequiresAdvertisedAtomicSchema(t *testing.T) {
 	if !SupportsCheckedInput(p, schema) {
 		t.Fatal("checked API not recognized")
 	}
+	p.Version = "0.7.3-checked.1"
+	if !SupportsCheckedInput(p, schema) {
+		t.Fatal("patched fork version not recognized")
+	}
+	p.Version = "0.8.0"
 	schema.Methods[0].Atomic = false
 	if SupportsCheckedInput(p, schema) {
 		t.Fatal("non-atomic API accepted")
