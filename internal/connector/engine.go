@@ -41,6 +41,7 @@ type Engine struct {
 	local              Local
 	mu                 sync.RWMutex
 	reconcileMu        sync.Mutex
+	stateStreamMu      sync.Mutex
 	state              protocol.InstanceSnapshot
 	byTerminal         map[string]protocol.Agent
 	checked            bool
@@ -60,6 +61,11 @@ type Engine struct {
 	deltaPublisher     func(protocol.StateDelta) error
 	failureHandler     func(error)
 }
+
+type statePublishError struct{ err error }
+
+func (e *statePublishError) Error() string { return e.err.Error() }
+func (e *statePublishError) Unwrap() error { return e.err }
 
 func NewEngine(cfg Config, local Local) (*Engine, error) {
 	if !protocol.IsUUID(cfg.HostID) || cfg.InstanceID == "" {
@@ -275,12 +281,55 @@ func (e *Engine) PollPrompts(ctx context.Context) ([]protocol.PromptSnapshot, *p
 	return prompts, delta, nil
 }
 
+func (e *Engine) pollPromptsAndPublish(ctx context.Context) ([]protocol.PromptSnapshot, error) {
+	e.stateStreamMu.Lock()
+	defer e.stateStreamMu.Unlock()
+	prompts, delta, err := e.PollPrompts(ctx)
+	if err != nil || delta == nil {
+		return prompts, err
+	}
+	e.mu.RLock()
+	publish := e.deltaPublisher
+	e.mu.RUnlock()
+	if publish == nil {
+		return nil, &statePublishError{err: errors.New("state delta publisher unavailable")}
+	}
+	if err := publish(*delta); err != nil {
+		return nil, &statePublishError{err: err}
+	}
+	return prompts, nil
+}
+
+func (e *Engine) reconcileAndPublish(ctx context.Context, forceSnapshot bool) (protocol.InstanceSnapshot, error) {
+	e.stateStreamMu.Lock()
+	defer e.stateStreamMu.Unlock()
+	before := e.Snapshot().EffectiveEpoch()
+	snapshot, delta, err := e.reconcile(ctx)
+	if err != nil {
+		return protocol.InstanceSnapshot{}, err
+	}
+	e.mu.RLock()
+	publishSnapshot := e.statePublisher
+	publishDelta := e.deltaPublisher
+	e.mu.RUnlock()
+	if delta != nil {
+		if publishDelta == nil {
+			return protocol.InstanceSnapshot{}, errors.New("state delta publisher unavailable")
+		}
+		err = publishDelta(*delta)
+	} else if forceSnapshot || snapshot.EffectiveEpoch() != before {
+		if publishSnapshot == nil {
+			return protocol.InstanceSnapshot{}, errors.New("state publisher unavailable")
+		}
+		err = publishSnapshot(snapshot)
+	}
+	return snapshot, err
+}
+
 func (e *Engine) RunReconciliation(ctx context.Context, publish func(protocol.InstanceSnapshot) error, publishDelta func(protocol.StateDelta) error) error {
 	e.SetStatePublisher(publish)
 	e.SetDeltaPublisher(publishDelta)
-	if snap, err := e.Reconcile(ctx); err != nil {
-		return err
-	} else if err := publish(snap); err != nil {
+	if _, err := e.reconcileAndPublish(ctx, true); err != nil {
 		return err
 	}
 	t := time.NewTimer(e.cfg.ReconcileInterval)
@@ -312,19 +361,8 @@ func (e *Engine) RunReconciliation(ctx context.Context, publish func(protocol.In
 				return err
 			}
 		}
-		before := e.Snapshot().EffectiveEpoch()
-		snap, delta, err := e.reconcile(ctx)
-		if err != nil {
+		if _, err := e.reconcileAndPublish(ctx, false); err != nil {
 			return err
-		}
-		if delta != nil {
-			if err := publishDelta(*delta); err != nil {
-				return err
-			}
-		} else if snap.EffectiveEpoch() != before {
-			if err := publish(snap); err != nil {
-				return err
-			}
 		}
 		if !t.Stop() {
 			select {
@@ -350,6 +388,24 @@ func (e *Engine) ForceReconcile(ctx context.Context) (protocol.InstanceSnapshot,
 	e.promptFingerprints = map[string]string{}
 	e.mu.Unlock()
 	return e.Reconcile(ctx)
+}
+func (e *Engine) forceReconcileAndPublish(ctx context.Context) error {
+	e.stateStreamMu.Lock()
+	defer e.stateStreamMu.Unlock()
+	e.mu.Lock()
+	e.state = protocol.InstanceSnapshot{}
+	e.byTerminal = map[string]protocol.Agent{}
+	e.promptFingerprints = map[string]string{}
+	publish := e.statePublisher
+	e.mu.Unlock()
+	if publish == nil {
+		return errors.New("state publisher unavailable")
+	}
+	snapshot, _, err := e.reconcile(ctx)
+	if err != nil {
+		return err
+	}
+	return publish(snapshot)
 }
 func sameInstanceMetadata(a, b protocol.InstanceSnapshot) bool {
 	return a.EffectiveEpoch() != "" && a.InstanceID == b.InstanceID && a.HerdrVersion == b.HerdrVersion && a.HerdrProtocol == b.HerdrProtocol && a.Status == b.Status && slices.Equal(a.Capabilities, b.Capabilities)
@@ -687,34 +743,16 @@ func (e *Engine) pollOutput(ctx context.Context, s protocol.OutputSubscribe, las
 		return err
 	}
 	if checked && r.Read.EffectiveRevision() != a.HerdrInputRevision {
-		previousEpoch := state.EffectiveEpoch()
-		snapshot, delta, reconcileErr := e.reconcile(ctx)
+		_, reconcileErr := e.reconcileAndPublish(ctx, false)
 		if reconcileErr != nil {
 			return reconcileErr
 		}
 		e.mu.RLock()
-		statePublisher := e.statePublisher
-		deltaPublisher := e.deltaPublisher
 		a, ok = e.byTerminal[s.Target.TerminalID]
 		state = e.state
 		e.mu.RUnlock()
 		if !ok {
 			return errors.New("target gone after reconciliation")
-		}
-		if delta != nil {
-			if deltaPublisher == nil {
-				return errors.New("state delta publisher unavailable")
-			}
-			if err := deltaPublisher(*delta); err != nil {
-				return err
-			}
-		} else if snapshot.EffectiveEpoch() != previousEpoch {
-			if statePublisher == nil {
-				return errors.New("state publisher unavailable")
-			}
-			if err := statePublisher(snapshot); err != nil {
-				return err
-			}
 		}
 		r, err = e.readAgent(ctx, a, s.Source, s.Lines)
 		if err != nil {

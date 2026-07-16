@@ -266,23 +266,14 @@ func (d *Daemon) runOnce(ctx context.Context, offerInventory bool, welcomed func
 				case <-runCtx.Done():
 					return
 				case <-t.C:
-					prompts, delta, err := engine.PollPrompts(runCtx)
+					prompts, err := engine.pollPromptsAndPublish(runCtx)
 					if err != nil {
+						var publishErr *statePublishError
+						if errors.As(err, &publishErr) {
+							errc <- err
+							return
+						}
 						continue
-					}
-					if delta != nil {
-						b, marshalErr := protocol.MarshalEnvelope(1, "state.delta", delta)
-						if marshalErr != nil {
-							errc <- marshalErr
-							return
-						}
-						c, cancel := context.WithTimeout(runCtx, 2*time.Second)
-						if q.Put(c, b) != nil {
-							cancel()
-							errc <- connectorQueueError{}
-							return
-						}
-						cancel()
 					}
 					for _, p := range prompts {
 						b, marshalErr := protocol.MarshalEnvelope(1, "prompt.snapshot", p)
@@ -403,18 +394,7 @@ func (d *Daemon) runOnce(ctx context.Context, offerInventory bool, welcomed func
 			if engine == nil {
 				return errors.New("resync names unknown instance")
 			}
-			snapshot, reconcileErr := engine.ForceReconcile(runCtx)
-			if reconcileErr != nil {
-				return reconcileErr
-			}
-			b, marshalErr := protocol.MarshalEnvelope(1, "state.snapshot", snapshot)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			c, cancel := context.WithTimeout(runCtx, 2*time.Second)
-			err = q.Put(c, b)
-			cancel()
-			if err != nil {
+			if err := engine.forceReconcileAndPublish(runCtx); err != nil {
 				return err
 			}
 		}

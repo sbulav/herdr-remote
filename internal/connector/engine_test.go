@@ -342,6 +342,55 @@ func TestCheckedRevisionReconciliationPreservesEpoch(t *testing.T) {
 		t.Fatalf("revision-only reconciliation state = %#v", second)
 	}
 }
+func TestConcurrentReconciliationPublishesSequencesInOrder(t *testing.T) {
+	f := &fakeLocal{version: "0.7.3-checked.1", checked: true, revision: 42}
+	e, _ := newEngine(t, f)
+	firstPublishing := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var mu sync.Mutex
+	var sequences []uint64
+	e.SetStatePublisher(func(protocol.InstanceSnapshot) error { return nil })
+	e.SetDeltaPublisher(func(delta protocol.StateDelta) error {
+		mu.Lock()
+		sequences = append(sequences, delta.Sequence)
+		mu.Unlock()
+		if delta.Sequence == 1 {
+			close(firstPublishing)
+			<-releaseFirst
+		}
+		return nil
+	})
+	f.revision = 43
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := e.reconcileAndPublish(context.Background(), false)
+		firstDone <- err
+	}()
+	<-firstPublishing
+	f.revision = 44
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := e.reconcileAndPublish(context.Background(), false)
+		secondDone <- err
+	}()
+	select {
+	case err := <-secondDone:
+		t.Fatalf("second delta published before first completed: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseFirst)
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(sequences, []uint64{1, 2}) {
+		t.Fatalf("published sequences = %v", sequences)
+	}
+}
 func TestDaemonSupportsMultipleConfiguredInstances(t *testing.T) {
 	first, err := NewEngine(Config{HostID: testHost, InstanceID: "default"}, &fakeLocal{})
 	if err != nil {
