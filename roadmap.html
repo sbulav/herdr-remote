@@ -225,11 +225,11 @@
     </p>
     <div class="status-grid" aria-label="Current project status">
       <div class="status-card"><small>Document snapshot</small><strong>2026-07-16</strong></div>
-      <div class="status-card"><small>POC status</small><strong class="done">Live and read-only</strong></div>
+      <div class="status-card"><small>POC status</small><strong class="done">Live with checked input</strong></div>
       <div class="status-card"><small>Public origin</small><strong><a href="https://herdr.sbulav.ru">herdr.sbulav.ru</a></strong></div>
       <div class="status-card"><small>Connected hosts</small><strong>1: mz</strong></div>
       <div class="status-card"><small>Observed agents</small><strong>2 after live fix</strong></div>
-      <div class="status-card"><small>Next release gate</small><strong class="manual">Checked-write acceptance</strong></div>
+      <div class="status-card"><small>Next release gate</small><strong class="manual">Full fail-closed matrix</strong></div>
     </div>
   </header>
 
@@ -257,7 +257,7 @@
       </p>
 
       <div class="callout warning">
-        <p><strong>Current safety state:</strong> monitoring and bounded output work, but remote writes are disabled. Do not bypass the version, capability, schema, revision, content-hash, generation, or epoch checks.</p>
+        <p><strong>Current safety state:</strong> monitoring, bounded output, and checked remote writes work through the patched fork. Exact upstream <code>0.7.3</code> remains read-only. Do not bypass the version, capability, schema, revision, content-hash, generation, or epoch checks.</p>
       </div>
 
       <h3>How an agent should claim work</h3>
@@ -275,11 +275,11 @@
       <h3>Repository authority</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Purpose</th><th>Checkout</th><th>Branch</th><th>Current commit</th><th>Remote</th></tr></thead>
+          <thead><tr><th>Purpose</th><th>Checkout</th><th>Branch</th><th>Implementation baseline</th><th>Remote</th></tr></thead>
           <tbody>
-            <tr><td>Control plane, connector, protocols, PWA, Nix modules</td><td><code>/home/sab/git_priv/herdr-remote</code></td><td><code>enterprise-v1</code></td><td><code>6664e6d</code></td><td><code>sbulav/herdr-remote</code></td></tr>
-            <tr><td>Checked atomic input fork</td><td><code>/tmp/opencode/herdr-v0.7.3</code></td><td><code>checked-input-v1</code></td><td><code>f1df299</code></td><td><code>sbulav/herdr</code></td></tr>
-            <tr><td>Live NixOS and Home Manager deployment</td><td><code>/home/sab/dotnix</code></td><td><code>feat-herdr-enterprise</code></td><td><code>c15aeb6</code></td><td><code>sbulav/dotnix</code></td></tr>
+            <tr><td>Control plane, connector, protocols, PWA, Nix modules</td><td><code>/home/sab/git_priv/herdr-remote</code></td><td><code>enterprise-v1</code></td><td><code>98d567e</code></td><td><code>sbulav/herdr-remote</code></td></tr>
+            <tr><td>Checked atomic input fork</td><td><code>/tmp/opencode/herdr-v0.7.3</code></td><td><code>checked-input-v1</code></td><td><code>4bb797f</code></td><td><code>sbulav/herdr</code></td></tr>
+            <tr><td>Live NixOS and Home Manager deployment</td><td><code>/home/sab/dotnix</code></td><td><code>feat-herdr-enterprise</code></td><td><code>7568b82</code></td><td><code>sbulav/dotnix</code></td></tr>
           </tbody>
         </table>
       </div>
@@ -452,6 +452,11 @@ Herdr runtime and agent PTYs</code></pre>
           <p>Reproduced the user's permanent connecting state against the live first WebSocket frame and the PWA's production validator. Separated browser instance records from connector snapshots so connector-only <code>sequence</code> cannot cross the browser boundary, then normalized empty hosts, instances, capabilities, and agents to JSON arrays rather than <code>null</code>.</p>
           <p><code>d0c8727</code>, <code>6664e6d</code>, deployed by <code>4e2f14a</code> and <code>c15aeb6</code>.</p>
         </article>
+        <article data-state="done">
+          <h3>11. Live checked-input enablement</h3>
+          <p>Gave the fork the distinct version <code>0.7.3-checked.1</code>, added exact atomic schema introspection, aligned checked reads and acknowledgements with the connector contract, pinned both user forks, deployed <code>zanoza</code>, and live-handed the running <code>mz</code> panes to the completed build.</p>
+          <p>A disposable agent received one checked text action through the deployed browser WebSocket and control plane. Reusing its stale revision returned <code>stale_input_revision</code> without enqueueing input. Commits <code>560d175</code>, <code>98d567e</code>, <code>4bb797f</code>, and <code>7568b82</code>.</p>
+        </article>
       </div>
     </section>
 
@@ -465,8 +470,8 @@ Herdr runtime and agent PTYs</code></pre>
             <tr><td>Control plane</td><td><code>zanoza</code>, <code>127.0.0.1:8080</code></td><td><code>herdr-controlplane.service</code> active; health and readiness return <code>{"status":"ok"}</code>.</td><td>NixOS module and SOPS credentials.</td></tr>
             <tr><td>Connector endpoint</td><td><code>herdr.sbulav.ru:8443</code></td><td>Listening with TLS and required connector client certificate.</td><td>Control-plane connector listener.</td></tr>
             <tr><td>mz connector</td><td>User service on <code>mz</code></td><td>Active since 2026-07-16 10:17:20 MSK after event fix.</td><td>Home Manager module and SOPS credentials.</td></tr>
-            <tr><td>Herdr socket</td><td><code>/home/sab/.config/herdr/herdr.sock</code></td><td>Mode <code>0600</code>; live probe returned two agents.</td><td>Manually launched Herdr runtime.</td></tr>
-            <tr><td>Observed projection</td><td><code>mz/default</code></td><td>One online instance; <code>opencode</code> working and <code>claude</code> idle at verification time.</td><td>Authenticated browser snapshot probe.</td></tr>
+            <tr><td>Herdr socket</td><td><code>/home/sab/.config/herdr/herdr.sock</code></td><td>Mode <code>0600</code>; live ping reports <code>0.7.3-checked.1</code>, <code>checked_input.v1</code>, and the exact atomic schema.</td><td>Manually launched Herdr runtime, replaced with live handoff.</td></tr>
+            <tr><td>Observed projection</td><td><code>mz/default</code></td><td>One online write-capable instance; current agents have nonzero input revisions.</td><td>Authenticated browser snapshot and checked-action probe.</td></tr>
           </tbody>
         </table>
       </div>
@@ -552,7 +557,7 @@ Herdr runtime and agent PTYs</code></pre>
 
     <section id="verification">
       <h2>Verification Record</h2>
-      <p class="lede">The integrated release gate passed before deployment. The later event-name fix reran focused connector, Herdr client, control-plane tests, and <code>go vet ./...</code>, then passed the live snapshot probe.</p>
+      <p class="lede">The integrated release gate passed before deployment. Checked-input enablement then passed Rust formatting, check, clippy, focused socket tests, the complete Herdr Remote gate, both deployment builds, live schema inspection, and a disposable end-to-end checked action.</p>
 
       <div class="table-wrap">
         <table>
@@ -568,6 +573,7 @@ Herdr runtime and agent PTYs</code></pre>
             <tr><td>Live public auth</td><td><code>302</code> to Authelia without session</td><td><code>curl -I https://herdr.sbulav.ru</code></td></tr>
             <tr><td>Live local health</td><td>Control plane active; health and readiness OK</td><td><code>ssh zanoza 'curl --fail http://127.0.0.1:8080/readyz'</code></td></tr>
             <tr><td>Live agent projection</td><td>1 host, 1 instance, 2 agents after fix</td><td>Temporary authenticated snapshot probe; removed after diagnosis</td></tr>
+            <tr><td>Live checked input</td><td>Disposable action succeeded; stale revision rejected without side effect</td><td>Temporary authenticated browser WebSocket probe; source, tunnel, session, and workspace removed</td></tr>
           </tbody>
         </table>
       </div>
@@ -614,15 +620,14 @@ Herdr runtime and agent PTYs</code></pre>
     <section id="gaps">
       <h2>Known Gaps and Risks</h2>
       <div class="callout danger">
-        <p><strong>Highest-priority gap:</strong> the checked Herdr fork still reports package version <code>0.7.3</code>. Herdr Remote deliberately treats exact <code>0.7.3</code> as incapable of checked writes, even if a capability is advertised. A restarted fork would therefore remain read-only until it identifies itself as a distinct build and passes schema validation.</p>
+        <p><strong>Highest-priority gap:</strong> one successful checked action and one stale-revision rejection are proven, but the complete SAFE-002 stale-state, duplicate-ID, ambiguous-outcome, reconnect, and metadata-only audit matrix is not yet complete.</p>
       </div>
 
       <div class="table-wrap">
         <table>
           <thead><tr><th>Gap</th><th>Impact</th><th>Disposition</th></tr></thead>
           <tbody>
-            <tr><td>Checked fork version collision</td><td>Blocks all safe remote writes.</td><td><a href="#SAFE-001">SAFE-001</a>, then <a href="#SAFE-002">SAFE-002</a>.</td></tr>
-            <tr><td>Running Herdr process predates package activation</td><td>Current ping reports only <code>live_handoff</code> and <code>detached_server_daemon</code>.</td><td>Coordinate restart after SAFE-001; restarting Herdr can disrupt live agents.</td></tr>
+            <tr><td>Full checked-write safety matrix incomplete</td><td>Basic write availability is proven, but every stale and uncertain-outcome path is not yet live-tested.</td><td>Complete <a href="#SAFE-002">SAFE-002</a> on disposable agents.</td></tr>
             <tr><td>Post-fix operator browser confirmation is not recorded</td><td>The exact live frame passes the production PWA validator with one host, one instance, and two agents, but final visual acceptance remains manual.</td><td><a href="#ACCEPT-001">ACCEPT-001</a>.</td></tr>
             <tr><td>Android install and push not tested on a physical phone</td><td>Installability and background notification reliability remain assumptions.</td><td><a href="#MOBILE-001">MOBILE-001</a>.</td></tr>
             <tr><td>Only <code>mz</code> is enrolled</td><td>No multi-host POC evidence.</td><td><a href="#HOST-001">HOST-001</a> and later <a href="#HOST-002">HOST-002</a>.</td></tr>
@@ -646,7 +651,7 @@ Herdr runtime and agent PTYs</code></pre>
         <article class="lane">
           <h3>Lane A: Write Safety</h3>
           <p><a href="#SAFE-001">SAFE-001</a> -&gt; <a href="#SAFE-002">SAFE-002</a></p>
-          <p>Make the fork unambiguously identifiable, then prove checked writes and stale rejection on a disposable agent.</p>
+          <p>The fork identity and basic checked write are complete. Finish the stale-state, duplicate, unknown-outcome, reconnect, and audit matrix on disposable agents.</p>
         </article>
         <article class="lane">
           <h3>Lane B: User Acceptance</h3>
@@ -694,7 +699,7 @@ ANDROID-001   (optional investigation only if PWA evidence is inadequate)</code>
         <table>
           <thead><tr><th>ID</th><th>Priority</th><th>Status</th><th>Primary owner area</th><th>Dependencies</th></tr></thead>
           <tbody>
-            <tr><td><a href="#SAFE-001">SAFE-001</a></td><td>P0</td><td><span class="badge ready">Ready</span></td><td>Herdr fork + protocol integration</td><td>None</td></tr>
+            <tr><td><a href="#SAFE-001">SAFE-001</a></td><td>P0</td><td><span class="badge done">Done</span></td><td>Herdr fork + protocol integration</td><td>None</td></tr>
             <tr><td><a href="#ACCEPT-001">ACCEPT-001</a></td><td>P0</td><td><span class="badge manual">Manual</span></td><td>Desktop acceptance</td><td>Live deployment</td></tr>
             <tr><td><a href="#MOBILE-001">MOBILE-001</a></td><td>P0</td><td><span class="badge manual">Manual</span></td><td>Android PWA and Push</td><td>Live deployment</td></tr>
             <tr><td><a href="#DOC-001">DOC-001</a></td><td>P1</td><td><span class="badge ready">Ready</span></td><td>Documentation</td><td>None</td></tr>
@@ -718,8 +723,8 @@ ANDROID-001   (optional investigation only if PWA evidence is inadequate)</code>
     <section id="tasks">
       <h2>Agent-Ready Work Packages</h2>
 
-      <article class="task" id="SAFE-001" data-task-id="SAFE-001" data-status="ready" data-dependencies="none">
-        <header><h3>SAFE-001: Give the checked Herdr fork a distinct identity</h3><span class="badge ready">Ready</span></header>
+      <article class="task" id="SAFE-001" data-task-id="SAFE-001" data-status="done" data-dependencies="none">
+        <header><h3>SAFE-001: Give the checked Herdr fork a distinct identity</h3><span class="badge done">Done</span></header>
         <div class="task-meta">
           <div><span class="meta-label">Priority</span><span class="meta-value">P0, release blocker</span></div>
           <div><span class="meta-label">Primary repo</span><span class="meta-value"><code>sbulav/herdr</code></span></div>
@@ -727,7 +732,8 @@ ANDROID-001   (optional investigation only if PWA evidence is inadequate)</code>
           <div><span class="meta-label">Conflict risk</span><span class="meta-value">High: lockfiles and live Herdr restart</span></div>
         </div>
         <p><strong>Objective:</strong> make the patched build report a version distinct from original upstream <code>0.7.3</code>, then prove capability and schema detection without weakening the exact <code>0.7.3</code> read-only rule.</p>
-        <p><strong>Reason:</strong> the fork implements checked input but its <code>Cargo.toml</code> still says <code>0.7.3</code>. Herdr Remote intentionally strips checked capability from exact <code>0.7.3</code>.</p>
+        <p><strong>Reason:</strong> the fork implemented checked input but its <code>Cargo.toml</code> still reported <code>0.7.3</code>. Herdr Remote intentionally strips checked capability from exact <code>0.7.3</code>.</p>
+        <p><strong>Completion:</strong> <code>0.7.3-checked.1</code> is live on <code>mz</code> at fork commit <code>4bb797f</code>. Exact <code>0.7.3</code> remains read-only; live ping, schema, nonzero revisions, one checked action, and stale-revision rejection were verified.</p>
         <div class="task-columns">
           <div>
             <h4>Implementation Scope</h4>
@@ -1234,13 +1240,17 @@ ssh zanoza 'curl --fail http://127.0.0.1:8080/readyz'</code></pre>
             <tr><td>herdr-remote</td><td><code>8f162e5</code></td><td>Use supported pane exit event.</td></tr>
             <tr><td>herdr-remote</td><td><code>d0c8727</code></td><td>Remove connector-only sequence from browser state.</td></tr>
             <tr><td>herdr-remote</td><td><code>6664e6d</code></td><td>Serialize empty browser collections as arrays.</td></tr>
+            <tr><td>herdr-remote</td><td><code>98d567e</code></td><td>Accept the distinct checked-fork version in positive fixtures.</td></tr>
             <tr><td>Herdr fork</td><td><code>f1df299</code></td><td>Add checked atomic agent input.</td></tr>
+            <tr><td>Herdr fork</td><td><code>560d175</code></td><td>Give the checked fork a distinct package identity.</td></tr>
+            <tr><td>Herdr fork</td><td><code>4bb797f</code></td><td>Complete the exact remote checked-input contract.</td></tr>
             <tr><td>dotnix</td><td><code>12a2da7</code></td><td>Deploy enterprise control-plane POC.</td></tr>
             <tr><td>dotnix</td><td><code>215ec10</code></td><td>Avoid systemd URL specifier expansion.</td></tr>
             <tr><td>dotnix</td><td><code>af0eadb</code></td><td>Enroll mz POC connector.</td></tr>
             <tr><td>dotnix</td><td><code>987926f</code></td><td>Deploy connector event subscription fix.</td></tr>
             <tr><td>dotnix</td><td><code>4e2f14a</code></td><td>Deploy browser instance projection fix.</td></tr>
             <tr><td>dotnix</td><td><code>c15aeb6</code></td><td>Deploy empty browser collection fix.</td></tr>
+            <tr><td>dotnix</td><td><code>7568b82</code></td><td>Deploy completed checked-input fork and protocol fixtures.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1256,7 +1266,7 @@ ssh zanoza 'curl --fail http://127.0.0.1:8080/readyz'</code></pre>
   </main>
 
   <footer>
-    <p>Herdr Remote enterprise v1 handoff. Last updated 2026-07-16 after live <code>mz</code> agent projection and strict browser snapshot validation were repaired and verified.</p>
+    <p>Herdr Remote enterprise v1 handoff. Last updated 2026-07-16 after checked input was enabled and verified through the live <code>mz</code> connector and <code>zanoza</code> control plane.</p>
   </footer>
 </body>
 </html>
