@@ -112,7 +112,7 @@ func (h *Hub) Snapshot(sessionID, stateEpoch string) protocol.SessionSnapshot {
 	defer h.mu.RUnlock()
 	for _, host := range h.hosts {
 		copy := host
-		copy.Instances = append([]protocol.InstanceSnapshot(nil), host.Instances...)
+		copy.Instances = append([]protocol.BrowserInstance(nil), host.Instances...)
 		out.Hosts = append(out.Hosts, copy)
 	}
 	return out
@@ -607,7 +607,7 @@ func (h *Hub) updateInventory(l *lease, inventory protocol.InstanceInventory) er
 		return errors.New("unexpected instance inventory")
 	}
 	host := h.hosts[l.hostID]
-	retained := make([]protocol.InstanceSnapshot, 0, len(host.Instances))
+	retained := make([]protocol.BrowserInstance, 0, len(host.Instances))
 	changes := make([]protocol.StateChange, 0, len(host.Instances))
 	for _, instance := range host.Instances {
 		if _, returning := configured[instance.InstanceID]; returning {
@@ -803,8 +803,8 @@ func (h *Hub) updateDelta(l *lease, d protocol.StateDelta) error {
 func projectAgent(a protocol.Agent, epoch string) protocol.Agent {
 	return protocol.Agent{TerminalID: a.TerminalID, Agent: a.Agent, DisplayName: a.DisplayName, Status: a.Status, Project: a.Project, AgentGeneration: a.EffectiveGeneration(), HerdrInputRevision: a.HerdrInputRevision, ConnectorEpoch: epoch}
 }
-func projectInstance(src protocol.InstanceSnapshot) protocol.InstanceSnapshot {
-	i := protocol.InstanceSnapshot{InstanceID: src.InstanceID, ConnectorEpoch: src.EffectiveEpoch(), Sequence: 0, HerdrVersion: src.HerdrVersion, HerdrProtocol: src.HerdrProtocol, Status: src.Status, Capabilities: append([]string(nil), src.Capabilities...)}
+func projectInstance(src protocol.InstanceSnapshot) protocol.BrowserInstance {
+	i := protocol.BrowserInstance{InstanceID: src.InstanceID, ConnectorEpoch: src.EffectiveEpoch(), HerdrVersion: src.HerdrVersion, HerdrProtocol: src.HerdrProtocol, Status: src.Status, Capabilities: append([]string(nil), src.Capabilities...)}
 	for _, a := range src.Agents {
 		i.Agents = append(i.Agents, projectAgent(a, src.EffectiveEpoch()))
 	}

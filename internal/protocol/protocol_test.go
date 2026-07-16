@@ -103,14 +103,14 @@ func TestUnknownFieldsAndBrowserMessageRejected(t *testing.T) {
 func TestSessionLogicalUniquenessAndHerdr073(t *testing.T) {
 	epoch := "019f64ca-3000-7000-8000-000000000110"
 	agent := Agent{TerminalID: "term", Agent: "opencode", Status: "blocked", AgentGeneration: 1, ConnectorEpoch: epoch}
-	inst := InstanceSnapshot{InstanceID: "default", ConnectorEpoch: epoch, HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}, Agents: []Agent{agent, agent}}
-	snap := SessionSnapshot{SessionID: "019f64ca-3000-7000-8000-000000000101", StateEpoch: "019f64ca-3000-7000-8000-000000000103", Hosts: []HostSnapshot{{HostID: "019f64ca-1000-7000-8000-000000000002", DisplayName: "host", Status: "connected", Instances: []InstanceSnapshot{inst}}}}
+	inst := BrowserInstance{InstanceID: "default", ConnectorEpoch: epoch, HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}, Agents: []Agent{agent, agent}}
+	snap := SessionSnapshot{SessionID: "019f64ca-3000-7000-8000-000000000101", StateEpoch: "019f64ca-3000-7000-8000-000000000103", Hosts: []HostSnapshot{{HostID: "019f64ca-1000-7000-8000-000000000002", DisplayName: "host", Status: "connected", Instances: []BrowserInstance{inst}}}}
 	if ValidateSessionSnapshot(snap) == nil {
 		t.Fatal("duplicate terminal accepted")
 	}
 	inst.Agents = []Agent{agent}
 	inst.Capabilities = []string{"read.v1", "checked_input.v1"}
-	snap.Hosts[0].Instances = []InstanceSnapshot{inst}
+	snap.Hosts[0].Instances = []BrowserInstance{inst}
 	if ValidateSessionSnapshot(snap) == nil {
 		t.Fatal("0.7.3 checked input accepted")
 	}

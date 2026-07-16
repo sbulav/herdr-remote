@@ -256,10 +256,27 @@ func (i InstanceSnapshot) EffectiveEpoch() string {
 }
 
 type HostSnapshot struct {
-	HostID      string             `json:"host_id"`
-	DisplayName string             `json:"display_name"`
-	Status      string             `json:"status"`
-	Instances   []InstanceSnapshot `json:"instances"`
+	HostID      string            `json:"host_id"`
+	DisplayName string            `json:"display_name"`
+	Status      string            `json:"status"`
+	Instances   []BrowserInstance `json:"instances"`
+}
+
+// BrowserInstance is the browser-safe projection of a connector snapshot.
+// Connector ordering is consumed by the control plane and never crosses the
+// browser protocol boundary.
+type BrowserInstance struct {
+	InstanceID     string   `json:"instance_id"`
+	ConnectorEpoch string   `json:"connector_epoch"`
+	HerdrVersion   string   `json:"herdr_version"`
+	HerdrProtocol  int      `json:"herdr_protocol"`
+	Status         string   `json:"status"`
+	Capabilities   []string `json:"capabilities"`
+	Agents         []Agent  `json:"agents"`
+}
+
+func (i BrowserInstance) EffectiveEpoch() string {
+	return i.ConnectorEpoch
 }
 
 type SessionSnapshot struct {
@@ -673,17 +690,30 @@ func ValidateSessionSnapshot(s SessionSnapshot) error {
 				return errors.New("duplicate instance")
 			}
 			instances[i.InstanceID] = true
-			if err := ValidateSnapshot(i); err != nil {
+			if err := validateBrowserInstance(i); err != nil {
 				return err
 			}
 			for _, a := range i.Agents {
-				if a.ConnectorEpoch != i.EffectiveEpoch() {
+				if a.ConnectorEpoch != i.ConnectorEpoch {
 					return errors.New("agent connector epoch mismatch")
 				}
 			}
 		}
 	}
 	return nil
+}
+
+func validateBrowserInstance(i BrowserInstance) error {
+	return ValidateSnapshot(InstanceSnapshot{
+		InstanceID:     i.InstanceID,
+		ConnectorEpoch: i.ConnectorEpoch,
+		Sequence:       0,
+		HerdrVersion:   i.HerdrVersion,
+		HerdrProtocol:  i.HerdrProtocol,
+		Status:         i.Status,
+		Capabilities:   i.Capabilities,
+		Agents:         i.Agents,
+	})
 }
 
 func ValidatePrompt(p PromptSnapshot, browser bool) error {

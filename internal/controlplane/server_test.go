@@ -681,7 +681,7 @@ func TestConnectorEpochChangeEmitsInvalidatingDelta(t *testing.T) {
 	first := protocol.InstanceSnapshot{InstanceID: "default", Epoch: "019f64ca-3000-7000-8000-000000000110", HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}}
 	l := &lease{hostID: host, instances: map[string]protocol.InstanceSnapshot{"default": first}}
 	hub.leases[host] = l
-	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "connected", Instances: []protocol.InstanceSnapshot{projectInstance(first)}}
+	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "connected", Instances: []protocol.BrowserInstance{projectInstance(first)}}
 	events := make(chan StateEvent, 1)
 	unsub := hub.Subscribe(func(kind string, value any) {
 		if kind == "state.delta" {
@@ -705,7 +705,7 @@ func TestReconnectSnapshotEmitsEpochChangedInsteadOfInstanceUpsert(t *testing.T)
 	host := "019f64ca-1000-7000-8000-000000000002"
 	oldEpoch := "019f64ca-3000-7000-8000-000000000110"
 	old := protocol.InstanceSnapshot{InstanceID: "default", ConnectorEpoch: oldEpoch, HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}}
-	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "disconnected", Instances: []protocol.InstanceSnapshot{old}}
+	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "disconnected", Instances: []protocol.BrowserInstance{projectInstance(old)}}
 	lease := &lease{hostID: host, displayName: "host", connectionID: mustTestID(), queue: connector.NewQueue(8), instances: map[string]protocol.InstanceSnapshot{}, pending: map[string]*pending{}, outputs: map[string]func(protocol.OutputSnapshot){}, rateTokens: 10, lastRate: time.Now()}
 	if err := hub.acquire(lease); err != nil {
 		t.Fatal(err)
@@ -747,7 +747,7 @@ func TestConnectorReconnectRemovesUnconfiguredInstance(t *testing.T) {
 	host := "019f64ca-1000-7000-8000-000000000002"
 	defaultOld := protocol.InstanceSnapshot{InstanceID: "default", ConnectorEpoch: "019f64ca-3000-7000-8000-000000000110", HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}, Agents: []protocol.Agent{{TerminalID: "default-term", Agent: "opencode", Status: "working", AgentGeneration: 1, ConnectorEpoch: "019f64ca-3000-7000-8000-000000000110"}}}
 	removed := protocol.InstanceSnapshot{InstanceID: "removed", ConnectorEpoch: "019f64ca-3000-7000-8000-000000000120", HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}, Agents: []protocol.Agent{{TerminalID: "removed-term", Agent: "opencode", Status: "blocked", AgentGeneration: 1, ConnectorEpoch: "019f64ca-3000-7000-8000-000000000120"}}}
-	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "connected", Instances: []protocol.InstanceSnapshot{defaultOld, removed}}
+	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "connected", Instances: []protocol.BrowserInstance{projectInstance(defaultOld), projectInstance(removed)}}
 	oldLease := &lease{hostID: host, displayName: "host", instances: map[string]protocol.InstanceSnapshot{"default": defaultOld, "removed": removed}, pending: map[string]*pending{}, outputs: map[string]func(protocol.OutputSnapshot){mustTestID(): func(protocol.OutputSnapshot) {}}}
 	hub.leases[host] = oldLease
 	hub.release(oldLease)
@@ -827,7 +827,7 @@ func TestNewServerOldConnectorConservativelyRetainsPriorInstances(t *testing.T) 
 		{InstanceID: "default", ConnectorEpoch: oldEpoch, HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}},
 		{InstanceID: "possibly-removed", ConnectorEpoch: "019f64ca-3000-7000-8000-000000000120", HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}},
 	}
-	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "disconnected", Instances: prior}
+	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "disconnected", Instances: []protocol.BrowserInstance{projectInstance(prior[0]), projectInstance(prior[1])}}
 	lease := &lease{hostID: host, displayName: "host", connectionID: mustTestID(), queue: connector.NewQueue(8), instances: map[string]protocol.InstanceSnapshot{}, pending: map[string]*pending{}, outputs: map[string]func(protocol.OutputSnapshot){}, rateTokens: 10, lastRate: time.Now()}
 	if err := hub.acquire(lease); err != nil {
 		t.Fatal(err)
@@ -1099,7 +1099,7 @@ func TestPushOnlyFiresForSemanticAttentionTransition(t *testing.T) {
 	l := &lease{hostID: host, instances: map[string]protocol.InstanceSnapshot{"default": {InstanceID: "default", Epoch: epoch, Sequence: 0, HerdrVersion: "0.7.3", HerdrProtocol: 16, Status: "online", Capabilities: []string{"read.v1"}, Agents: []protocol.Agent{{TerminalID: "term", PaneID: "p", WorkspaceID: "w", TabID: "t", Agent: "opencode", Status: "working", Generation: 1}}}}}
 	hub.mu.Lock()
 	hub.leases[host] = l
-	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "connected", Instances: []protocol.InstanceSnapshot{projectInstance(l.instances["default"])}}
+	hub.hosts[host] = protocol.HostSnapshot{HostID: host, DisplayName: "host", Status: "connected", Instances: []protocol.BrowserInstance{projectInstance(l.instances["default"])}}
 	hub.mu.Unlock()
 	idle := l.instances["default"].Agents[0]
 	idle.Status = "idle"
@@ -1125,6 +1125,54 @@ func TestPushOnlyFiresForSemanticAttentionTransition(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("attention transition did not send push")
+	}
+}
+
+func TestBrowserSnapshotOmitsConnectorOnlyInstanceFields(t *testing.T) {
+	_, hub, st := testServer(t)
+	defer st.Close()
+	hostID := "019f64ca-1000-7000-8000-000000000002"
+	instance := protocol.InstanceSnapshot{
+		InstanceID:    "default",
+		Epoch:         mustTestID(),
+		Sequence:      0,
+		HerdrVersion:  "0.7.3",
+		HerdrProtocol: 16,
+		Status:        "online",
+		Capabilities:  []string{"read.v1"},
+	}
+	hub.hosts[hostID] = protocol.HostSnapshot{
+		HostID:      hostID,
+		DisplayName: "host",
+		Status:      "connected",
+		Instances:   []protocol.BrowserInstance{projectInstance(instance)},
+	}
+	frame, err := protocol.MarshalEnvelope(1, "session.snapshot", hub.Snapshot(mustTestID(), mustTestID()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Body struct {
+			Hosts []struct {
+				Instances []map[string]json.RawMessage `json:"instances"`
+			} `json:"hosts"`
+		} `json:"body"`
+	}
+	if err := json.Unmarshal(frame, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Body.Hosts) != 1 || len(envelope.Body.Hosts[0].Instances) != 1 {
+		t.Fatalf("browser snapshot instances = %#v", envelope.Body.Hosts)
+	}
+	got := envelope.Body.Hosts[0].Instances[0]
+	want := []string{"agents", "capabilities", "connector_epoch", "herdr_protocol", "herdr_version", "instance_id", "status"}
+	if len(got) != len(want) {
+		t.Fatalf("browser instance fields = %#v", got)
+	}
+	for _, name := range want {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("browser instance missing %q: %#v", name, got)
+		}
 	}
 }
 
