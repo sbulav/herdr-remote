@@ -52,6 +52,13 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .agent.blocked { border-color: var(--red); background: color-mix(in srgb, var(--red) 5%, var(--surface)); }
 .workspace-card { border-color: color-mix(in srgb, var(--text) 10%, transparent); }
 .count-pill { display: inline-block; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: 0.65rem; }
+.chip-strip { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
+.chip-strip::-webkit-scrollbar { display: none; }
+.chip-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
+.chip { padding: 6px 14px; border-radius: 9999px; border: none; font-size: 0.8rem; font-weight: 500; white-space: nowrap; cursor: pointer; position: relative; transition: all 0.15s; background: var(--border); color: var(--muted); }
+.chip.active { background: var(--blue); color: #fff; }
+.chip.alert::after { content: ''; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); border: 2px solid var(--bg); }
+.chip:active { transform: scale(0.95); }
 .agent .info { flex: 1; }
 .agent .project { font-size: 0.9rem; font-weight: 500; }
 .agent .meta { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
@@ -153,11 +160,12 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
   <div class="term-content" id="termContent">Loading…</div>
   <div class="quick-actions" id="quickActions"></div>
   <div class="term-input">
-    <button onclick="openCommandPalette()" style="padding:10px 12px;border-radius:6px;border:1px solid var(--blue);background:var(--bg);color:var(--blue);font-weight:700;font-size:14px;flex-shrink:0">/</button>
+    <button onclick="openCommandPalette()" aria-label="Commands" style="padding:10px 12px;border-radius:6px;border:1px solid var(--blue);background:var(--bg);color:var(--blue);font-weight:700;font-size:14px;flex-shrink:0">/</button>
     <input id="termInput" placeholder="Type…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    <button onclick="toggleKeysDock()" aria-label="Keys" style="padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-size:14px;flex-shrink:0">⌨</button>
     <button onclick="sendText()">⏎</button>
   </div>
-  <div class="term-keys" id="termKeys">
+  <div class="term-keys" id="termKeys" style="display:none">
     <!-- Key queue strip (visible when composing) -->
     <div id="keyQueueStrip" style="display:none;width:100%;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;flex-wrap:wrap;gap:4px;align-items:center"></div>
     <!-- Tab toggle -->
@@ -213,6 +221,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 let ws = null, agents = [], activePane = null, refreshInterval = null, userScrolledUp = false;
 let timeline = [], prevStatuses = {};
 let activeWorkspace = null;
+let activeTab = null;
 
 // Settings — auto-detect relay when served from same origin
 const autoRelayUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
@@ -349,77 +358,80 @@ function handleMessage(msg) {
 
 function render() {
   document.getElementById('agentCount').textContent = agents.length ? `${agents.length}` : '';
-  // Get unique workspaces
   const workspaces = [...new Set(agents.map(a => a.workspace_id).filter(Boolean))];
-  
-  // If only one workspace or none have workspace_id, skip drill-down
   if (workspaces.length <= 1) {
     activeWorkspace = null;
+    activeTab = null;
     renderAgentList(agents);
     return;
   }
-  
-  if (activeWorkspace === null) {
-    renderWorkspaces(workspaces);
-  } else {
-    const filtered = agents.filter(a => a.workspace_id === activeWorkspace);
-    renderAgentList(filtered, true);
-  }
+  renderWorkspaces(workspaces);
 }
 
 function renderWorkspaces(workspaces) {
   let html = '';
-  // Hoist blocked agents above workspaces (collie "Needs you" pattern)
+  // Hoist blocked agents
   const blocked = agents.filter(a => a.status === 'blocked');
   if (blocked.length) {
     html += `<div class="section-header" style="color:var(--red)"><span class="dot" style="background:var(--red)"></span>Needs you <span style="opacity:0.6">(${blocked.length})</span></div>`;
     html += blocked.map(a => agentCard(a)).join('');
   }
-  html += `<div class="section-header">Spaces <span style="opacity:0.6">(${workspaces.length})</span></div>`;
+  // Space chip strip
+  html += `<div class="chip-strip"><span class="chip-label">Spaces</span>`;
+  html += `<button class="chip${activeWorkspace===null?' active':''}" onclick="backToWorkspaces()">All</button>`;
   for (const wsId of workspaces) {
     const wsAgents = agents.filter(a => a.workspace_id === wsId);
-    const blockedCount = wsAgents.filter(a => a.status === 'blocked').length;
-    const workingCount = wsAgents.filter(a => a.status === 'working').length;
-    const tabCount = new Set(wsAgents.map(a => a.tab_id).filter(Boolean)).size;
+    const hasBlocked = wsAgents.some(a => a.status === 'blocked');
     const name = wsAgents[0]?.project || wsId.slice(0, 8);
-    html += `<div class="agent workspace-card" role="button" tabindex="0" aria-label="${name} workspace" onclick="selectWorkspace('${wsId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectWorkspace('${wsId}')}">
-      <span class="dot" style="background:${blockedCount?'var(--red)':workingCount?'var(--green)':'var(--muted)'}"></span>
-      <div class="info">
-        <div class="project">${name}</div>
-        <div class="meta"><span class="count-pill">${wsAgents.length} panes</span>${tabCount ? ` <span class="count-pill">${tabCount} tabs</span>` : ''} · ${blockedCount ? `<span style="color:var(--red)">${blockedCount} blocked</span>` : workingCount ? `<span style="color:var(--green)">${workingCount} working</span>` : 'idle'}</div>
-      </div>
-      <span style="color:var(--muted);font-size:1.2rem">›</span>
-    </div>`;
+    html += `<button class="chip${activeWorkspace===wsId?' active':''}${hasBlocked?' alert':''}" onclick="selectWorkspace('${wsId}')">${name}</button>`;
   }
-  // Show agents without workspace_id
-  const noWs = agents.filter(a => !a.workspace_id);
-  if (noWs.length) {
-    html += '<div class="section-header">Other</div>';
-    html += noWs.map(a => agentCard(a)).join('');
+  html += `</div>`;
+  // Tab chip strip (when workspace selected)
+  if (activeWorkspace) {
+    const wsTabs = [...new Set(agents.filter(a => a.workspace_id === activeWorkspace).map(a => a.tab_id).filter(Boolean))];
+    if (wsTabs.length > 1) {
+      html += `<div class="chip-strip"><span class="chip-label">Tabs</span>`;
+      html += `<button class="chip${!activeTab?' active':''}" onclick="selectTab(null)">All</button>`;
+      wsTabs.forEach((tid, i) => {
+        const tabAgents = agents.filter(a => a.tab_id === tid);
+        const hasBlocked = tabAgents.some(a => a.status === 'blocked');
+        html += `<button class="chip${activeTab===tid?' active':''}${hasBlocked?' alert':''}" onclick="selectTab('${tid}')">Tab ${i+1}</button>`;
+      });
+      html += `</div>`;
+    }
   }
+  // Agent list (filtered)
+  let filtered = agents;
+  if (activeWorkspace) filtered = filtered.filter(a => a.workspace_id === activeWorkspace);
+  if (activeTab) filtered = filtered.filter(a => a.tab_id === activeTab);
+  // Don't re-show blocked that are already hoisted
+  const working = filtered.filter(a => a.status==='working');
+  const done = filtered.filter(a => a.status==='done');
+  const idle = filtered.filter(a => a.status==='idle'||a.status==='unknown');
+  if (working.length) html += section('Working', 'var(--green)', working);
+  if (done.length) html += section('Done', 'var(--muted)', done);
+  if (idle.length) html += section('Idle', 'var(--muted)', idle);
   if (!agents.length) html = '<div class="empty">Waiting for agents…</div>';
   document.getElementById('agents').innerHTML = html;
 }
 
-function renderAgentList(list, showBack) {
+function renderAgentList(list) {
   const blocked = list.filter(a => a.status==='blocked');
   const working = list.filter(a => a.status==='working');
   const done = list.filter(a => a.status==='done');
   const idle = list.filter(a => a.status==='idle'||a.status==='unknown');
   let html = '';
-  if (showBack) {
-    html += `<div class="section-header" style="cursor:pointer" onclick="backToWorkspaces()"><span style="font-size:1rem">‹</span> All Workspaces</div>`;
-  }
   if (blocked.length) html += section('Blocked', 'var(--red)', blocked);
   if (working.length) html += section('Working', 'var(--green)', working);
-  if (done.length) html += section('Done', 'var(--accent)', done);
+  if (done.length) html += section('Done', 'var(--muted)', done);
   if (idle.length) html += section('Idle', 'var(--muted)', idle);
-  if (!list.length) html = '<div class="empty">No agents in this workspace</div>';
+  if (!list.length) html = '<div class="empty">Waiting for agents…</div>';
   document.getElementById('agents').innerHTML = html;
 }
 
-function selectWorkspace(id) { activeWorkspace = id; render(); }
-function backToWorkspaces() { activeWorkspace = null; render(); }
+function selectWorkspace(id) { activeWorkspace = id; activeTab = null; render(); }
+function backToWorkspaces() { activeWorkspace = null; activeTab = null; render(); }
+function selectTab(id) { activeTab = id; render(); }
 
 function agentCard(a) {
   const color = a.status==='blocked'?'var(--red)':a.status==='working'?'var(--green)':'var(--muted)';
@@ -544,6 +556,13 @@ function sendQueuedKeys() {
   if(window.cue) cue('success');
   sendKeys(keyQueue);
   keyQueue=[]; armedMod=null; renderKeyQueue(); renderMods();
+}
+
+function toggleKeysDock() {
+  const el = document.getElementById('termKeys');
+  const show = el.style.display === 'none';
+  el.style.display = show ? '' : 'none';
+  if(window.cue) cue(show ? 'page' : 'tick');
 }
 
 function switchKeyTab(tab) {
