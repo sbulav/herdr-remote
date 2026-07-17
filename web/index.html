@@ -64,19 +64,22 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .term-input { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; gap: 6px; background: var(--surface); flex-shrink: 0; }
 .term-input input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 14px; font-family: monospace; min-width: 0; }
 .term-input button { padding: 10px 14px; border-radius: 6px; border: none; background: var(--blue); color: #fff; font-weight: 700; font-size: 16px; flex-shrink: 0; }
-.term-keys { border-top: 1px solid var(--border); padding: 6px 8px; display: flex; gap: 4px; background: var(--surface); flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom, 6px); align-items: center; overflow-x: auto; }
-.term-keys button { padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap; min-height: 44px; }
-.term-keys button:active { background: var(--border); }
-.term-keys button.key-green { border-color: var(--green); color: var(--green); }
-.term-keys button.key-blue { border-color: var(--blue); color: var(--blue); }
-.term-keys button.key-red { border-color: var(--red); color: var(--red); }
-.term-keys .spacer { flex: 1; }
-.arrow-toggle { position: relative; }
-.arrow-popup { display: none; position: absolute; bottom: 44px; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-.arrow-popup.show { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; }
-.arrow-popup button { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.arrow-popup button:active { background: var(--border); }
-.arrow-popup .empty { visibility: hidden; }
+.term-keys { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; flex-direction: column; background: var(--surface); flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom, 8px); }
+.nav-key { padding: 10px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; min-height: 44px; display: flex; align-items: center; justify-content: center; transition: background 0.15s, border-color 0.15s; }
+.nav-key:active { background: var(--border); transform: scale(0.97); }
+.mod-key { font-size: 12px; }
+.mod-key.armed { background: var(--blue); border-color: var(--blue); color: #fff; }
+.tab-btn { padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.tab-btn.active { background: var(--surface); color: var(--text); border-color: var(--blue); }
+.ctrl-key { padding: 10px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; min-height: 44px; }
+.ctrl-key:active { background: var(--border); }
+.ctrl-key.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 30%, var(--border)); }
+.ctrl-key.confirm { background: var(--red); color: #fff; border-color: var(--red); }
+.digit-key { padding: 14px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 18px; font-family: monospace; font-weight: 600; cursor: pointer; min-height: 52px; display: flex; align-items: center; justify-content: center; }
+.digit-key:active { background: var(--border); }
+.queue-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: color-mix(in srgb, var(--text) 5%, var(--bg)); font-family: monospace; font-size: 12px; font-weight: 500; cursor: pointer; }
+.queue-chip:hover { border-color: var(--red); }
+.queue-chip.danger { border-color: color-mix(in srgb, var(--red) 40%, var(--border)); color: var(--red); }
 
 .empty { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 0.85rem; }
 
@@ -90,7 +93,6 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
   .term-content { min-height: 300px; }
 }
 @media (pointer: fine) {
-  .term-keys .arrow-toggle, .term-keys button[onclick*="blur"] { display: none; }
   .quick-actions button { flex: none; min-width: auto; padding: 8px 18px; }
 }
 </style>
@@ -145,25 +147,45 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
   <div class="term-content" id="termContent">Loading…</div>
   <div class="quick-actions" id="quickActions"></div>
   <div class="term-input">
+    <button onclick="openCommandPalette()" style="padding:10px 12px;border-radius:6px;border:1px solid var(--blue);background:var(--bg);color:var(--blue);font-weight:700;font-size:14px;flex-shrink:0">/</button>
     <input id="termInput" placeholder="Type…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <button onclick="sendText()">⏎</button>
   </div>
-  <div class="term-keys">
-    <button onclick="sendKey('Tab')">⇥</button>
-    <button onclick="sendKey('Escape')">Esc</button>
-    <button onclick="sendKeys(['Ctrl+c'])">^C</button>
-    <button onclick="openCommandPalette()" class="key-blue">/</button>
-    <span id="actionKeys"></span>
-    <span class="spacer"></span>
-    <div class="arrow-toggle">
-      <button onclick="toggleArrows()">↕</button>
-      <div class="arrow-popup" id="arrowPopup">
-        <button class="empty"></button><button onclick="sendKey('Up');hideArrows()">↑</button><button class="empty"></button>
-        <button onclick="sendKey('Left');hideArrows()">←</button><button onclick="sendKey('Enter');hideArrows()">⏎</button><button onclick="sendKey('Right');hideArrows()">→</button>
-        <button class="empty"></button><button onclick="sendKey('Down');hideArrows()">↓</button><button class="empty"></button>
+  <div class="term-keys" id="termKeys">
+    <!-- Key queue strip (visible when composing) -->
+    <div id="keyQueueStrip" style="display:none;width:100%;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;flex-wrap:wrap;gap:4px;align-items:center"></div>
+    <!-- Tab toggle -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;width:100%;margin-bottom:6px">
+      <button class="tab-btn active" id="tabKeys" onclick="switchKeyTab('keys')">Keys</button>
+      <button class="tab-btn" id="tabDigits" onclick="switchKeyTab('digits')">123</button>
+    </div>
+    <!-- Keys pad -->
+    <div id="keysPad" style="width:100%">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:4px">
+        <button class="nav-key" onclick="fireKey('Escape')">Esc</button>
+        <button class="nav-key" onclick="fireKey('Space')">Space</button>
+        <button class="nav-key" onclick="fireKey('Up')">↑</button>
+        <button class="nav-key" onclick="fireKey('Enter')">⏎</button>
+        <button class="nav-key" onclick="fireKey('Tab')">Tab</button>
+        <button class="nav-key" onclick="fireKey('Left')">←</button>
+        <button class="nav-key" onclick="fireKey('Down')">↓</button>
+        <button class="nav-key" onclick="fireKey('Right')">→</button>
+      </div>
+      <!-- Modifiers -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+        <button class="nav-key mod-key" id="modShift" onclick="armMod('shift')">⇧ Shift</button>
+        <button class="nav-key mod-key" id="modCtrl" onclick="armMod('ctrl')">Ctrl</button>
+      </div>
+      <!-- Ctrl presets -->
+      <div>
+        <button onclick="toggleCtrlPresets()" style="background:none;border:none;color:var(--muted);font-size:0.7rem;cursor:pointer;padding:2px 4px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase">Presets <span id="ctrlChevron">▸</span></button>
+        <div id="ctrlPresets" style="display:none;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px"></div>
       </div>
     </div>
-    <button onclick="document.getElementById('termInput').blur()">⌨↓</button>
+    <!-- Digits pad -->
+    <div id="digitsPad" style="display:none;width:100%;grid-template-columns:repeat(3,1fr);gap:4px"></div>
+    <!-- Action keys for blocked state -->
+    <div id="actionKeys" style="width:100%;margin-top:4px"></div>
   </div>
 </div>
 
@@ -451,8 +473,116 @@ function sendText() {
 }
 function sendKey(k){if(!ws||!activePane)return;ws.send(JSON.stringify({type:'send_keys',pane_id:activePane,keys:[k]}));setTimeout(refreshPane,300);}
 function sendKeys(k){if(!ws||!activePane)return;ws.send(JSON.stringify({type:'send_keys',pane_id:activePane,keys:k}));setTimeout(refreshPane,300);}
-function toggleArrows(){document.getElementById('arrowPopup').classList.toggle('show');}
-function hideArrows(){document.getElementById('arrowPopup').classList.remove('show');}
+
+// --- Nav Tray (collie-style) ---
+let keyQueue = [], armedMod = null, ctrlConfirm = null;
+const CTRL_PRESETS = [
+  {label:'Ctrl C', keys:['ctrl+c']},
+  {label:'Ctrl D', keys:['ctrl+d'], danger:true},
+  {label:'Ctrl U', keys:['ctrl+u']},
+  {label:'Ctrl R', keys:['ctrl+r']},
+  {label:'Ctrl L', keys:['ctrl+l']},
+  {label:'Ctrl Z', keys:['ctrl+z'], danger:true},
+];
+const DANGER_KEYS = new Set(['ctrl+c','ctrl+d','ctrl+z']);
+
+function fireKey(k) {
+  const composed = armedMod ? `${armedMod}+${k}` : k;
+  if (keyQueue.length > 0 || armedMod) {
+    keyQueue.push(composed);
+    armedMod = null;
+    renderKeyQueue();
+    renderMods();
+  } else {
+    sendKeys([composed]);
+  }
+}
+
+function armMod(m) {
+  armedMod = armedMod === m ? null : m;
+  renderMods();
+}
+
+function renderMods() {
+  const s = document.getElementById('modShift');
+  const c = document.getElementById('modCtrl');
+  if (s) s.classList.toggle('armed', armedMod === 'shift');
+  if (c) c.classList.toggle('armed', armedMod === 'ctrl');
+}
+
+function renderKeyQueue() {
+  const strip = document.getElementById('keyQueueStrip');
+  if (!keyQueue.length && !armedMod) { strip.style.display = 'none'; return; }
+  strip.style.display = 'flex';
+  let html = keyQueue.map((k,i) => {
+    const isDanger = DANGER_KEYS.has(k.toLowerCase());
+    const label = k.includes('+') ? k.replace('ctrl+','Ctrl ').replace('shift+','\u21e7 ') : k;
+    return `<span class="queue-chip${isDanger?' danger':''}" onclick="removeQueueKey(${i})">${label} \u00d7</span>`;
+  }).join('');
+  if (armedMod) html += `<span style="color:var(--muted);font-size:12px;padding:4px">${armedMod==='shift'?'\u21e7':'Ctrl'} + \u2026</span>`;
+  html += `<span style="margin-left:auto;display:flex;gap:4px">`;
+  html += `<button onclick="sendQueuedKeys()" style="padding:6px 12px;border-radius:6px;border:none;background:${keyQueue.some(k=>DANGER_KEYS.has(k.toLowerCase()))?'var(--red)':'var(--blue)'};color:#fff;font-size:12px;font-weight:600;cursor:pointer">Send</button>`;
+  html += `<button onclick="clearKeyQueue()" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-size:12px;cursor:pointer">✕</button>`;
+  html += `</span>`;
+  strip.innerHTML = html;
+}
+
+function removeQueueKey(i) { keyQueue.splice(i,1); renderKeyQueue(); }
+function clearKeyQueue() { keyQueue=[]; armedMod=null; renderKeyQueue(); renderMods(); }
+function sendQueuedKeys() {
+  if (!keyQueue.length) return;
+  sendKeys(keyQueue);
+  keyQueue=[]; armedMod=null; renderKeyQueue(); renderMods();
+}
+
+function switchKeyTab(tab) {
+  document.getElementById('tabKeys').classList.toggle('active', tab==='keys');
+  document.getElementById('tabDigits').classList.toggle('active', tab==='digits');
+  document.getElementById('keysPad').style.display = tab==='keys' ? '' : 'none';
+  const dp = document.getElementById('digitsPad');
+  dp.style.display = tab==='digits' ? 'grid' : 'none';
+  if (tab==='digits' && !dp.innerHTML) {
+    dp.innerHTML = [1,2,3,4,5,6,7,8,9].map(d => `<button class="digit-key" onclick="fireKey('${d}')">${d}</button>`).join('');
+  }
+}
+
+function toggleCtrlPresets() {
+  const el = document.getElementById('ctrlPresets');
+  const chevron = document.getElementById('ctrlChevron');
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'grid' : 'none';
+  chevron.textContent = show ? '\u25be' : '\u25b8';
+  if (show && !el.innerHTML) {
+    el.innerHTML = CTRL_PRESETS.map(p => {
+      const cls = p.danger ? 'ctrl-key danger' : 'ctrl-key';
+      return `<button class="${cls}" onclick="pressCtrl('${p.label}')">${p.label}</button>`;
+    }).join('');
+  }
+}
+
+function pressCtrl(label) {
+  const preset = CTRL_PRESETS.find(p => p.label === label);
+  if (!preset) return;
+  // If composing (queue has items), just stage it
+  if (keyQueue.length > 0) { keyQueue.push(...preset.keys); renderKeyQueue(); return; }
+  // Two-tap confirm for danger keys
+  if (preset.danger && ctrlConfirm !== label) {
+    ctrlConfirm = label;
+    const el = document.getElementById('ctrlPresets');
+    el.innerHTML = CTRL_PRESETS.map(p => {
+      const cls = p.danger ? (p.label===label?'ctrl-key confirm':'ctrl-key danger') : 'ctrl-key';
+      const txt = p.label===label ? 'Confirm?' : p.label;
+      return `<button class="${cls}" onclick="pressCtrl('${p.label}')">${txt}</button>`;
+    }).join('');
+    setTimeout(() => { ctrlConfirm=null; toggleCtrlPresets(); toggleCtrlPresets(); }, 3000);
+    return;
+  }
+  ctrlConfirm = null;
+  sendKeys(preset.keys);
+}
+
+function toggleArrows(){}
+function hideArrows(){}
 function respond(t){if(!ws||!activePane)return;ws.send(JSON.stringify({type:'respond',pane_id:activePane,text:t}));document.getElementById('quickActions').innerHTML='';setTimeout(refreshPane,500);}
 document.getElementById('termInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendText();}});
 document.getElementById('termContent').addEventListener('scroll', function() {
