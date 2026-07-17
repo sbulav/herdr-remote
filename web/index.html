@@ -27,6 +27,8 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .header h1 { font-size: 1rem; flex: 1; }
 .header button { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 10px; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot.pulse { animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .view { flex: 1; overflow-y: auto; }
 
@@ -115,6 +117,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 <div class="header">
   <span class="dot" id="statusDot"></span>
   <h1>🐑 herdr</h1>
+  <span id="connLabel" style="font-size:0.65rem;color:var(--muted)"></span>
   <span id="agentCount" style="font-size:0.7rem;color:var(--muted)"></span>
   <button onclick="toggleTimeline()" aria-label="Timeline">🕐</button>
   <button onclick="toggleSettings()" aria-label="Settings">⚙</button>
@@ -162,6 +165,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
   <div class="term-input">
     <button onclick="openCommandPalette()" aria-label="Commands" style="padding:10px 12px;border-radius:6px;border:1px solid var(--blue);background:var(--bg);color:var(--blue);font-weight:700;font-size:14px;flex-shrink:0">/</button>
     <input id="termInput" placeholder="Type…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    <button onclick="toggleQuickDock()" aria-label="Quick actions" style="padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--orange);font-size:13px;font-weight:600;flex-shrink:0">⚡</button>
     <button onclick="toggleKeysDock()" aria-label="Keys" style="padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-size:14px;flex-shrink:0">⌨</button>
     <button onclick="sendText()">⏎</button>
   </div>
@@ -177,16 +181,17 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
     <div id="keysPad" style="width:100%">
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:4px">
         <button class="nav-key" onclick="fireKey('Escape')">Esc</button>
-        <button class="nav-key" onclick="fireKey('Space')">Space</button>
-        <button class="nav-key" onclick="fireKey('Up')">↑</button>
-        <button class="nav-key" onclick="fireKey('Enter')">⏎</button>
+        <button class="nav-key" style="grid-column:span 2" onclick="fireKey('Space')">Space</button>
+        <button class="nav-key" onclick="fireKey('Enter')">⏎ Enter</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:4px">
         <button class="nav-key" onclick="fireKey('Tab')">Tab</button>
         <button class="nav-key" onclick="fireKey('Left')">←</button>
         <button class="nav-key" onclick="fireKey('Down')">↓</button>
-        <button class="nav-key" onclick="fireKey('Right')">→</button>
+        <button class="nav-key" onclick="fireKey('Up')">↑</button>
       </div>
-      <!-- Modifiers -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:4px">
+        <button class="nav-key" onclick="fireKey('Right')">→</button>
         <button class="nav-key mod-key" id="modShift" onclick="armMod('shift')">⇧ Shift</button>
         <button class="nav-key mod-key" id="modCtrl" onclick="armMod('ctrl')">Ctrl</button>
       </div>
@@ -200,6 +205,27 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
     <div id="digitsPad" style="display:none;width:100%;grid-template-columns:repeat(3,1fr);gap:4px"></div>
     <!-- Action keys for blocked state -->
     <div id="actionKeys" style="width:100%;margin-top:4px"></div>
+  </div>
+  <!-- Quick actions dock -->
+  <div class="term-keys" id="quickDock" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:8px">
+      <span style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)">Quick Actions</span>
+      <button onclick="toggleQuickDock()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer">✕</button>
+    </div>
+    <div style="width:100%">
+      <p style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:4px">Confirm</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">
+        <button class="nav-key" style="color:var(--green);border-color:var(--green)" onclick="quickSend('yes')">yes</button>
+        <button class="nav-key" style="color:var(--red);border-color:var(--red)" onclick="quickSend('no')">no</button>
+      </div>
+      <p style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:4px">Common</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+        <button class="nav-key" onclick="quickSend('continue')">continue</button>
+        <button class="nav-key" onclick="quickSend('retry')">retry</button>
+        <button class="nav-key" onclick="quickSend('skip')">skip</button>
+        <button class="nav-key" onclick="quickSend('commit and push')">commit & push</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -297,7 +323,10 @@ function connect() {
 
 function setStatus(s) {
   const dot = document.getElementById('statusDot');
+  const label = document.getElementById('connLabel');
   dot.style.background = s==='connected'?'var(--green)':s==='connecting'?'var(--orange)':'var(--red)';
+  label.textContent = s==='connected'?'live':s==='connecting'?'connecting…':'offline';
+  label.style.color = s==='connected'?'var(--green)':s==='connecting'?'var(--orange)':'var(--red)';
 }
 
 function showSetup() {
@@ -435,11 +464,12 @@ function selectTab(id) { activeTab = id; render(); }
 
 function agentCard(a) {
   const color = a.status==='blocked'?'var(--red)':a.status==='working'?'var(--green)':'var(--muted)';
+  const pulseClass = a.status==='working'?' pulse':'';
   const host = a.host&&a.host!=='local'?` <span style="color:var(--orange);font-size:0.6rem">@${a.host}</span>`:'';
   const cwd = a.cwd ? `<span style="font-family:monospace;opacity:0.7">${a.cwd.split('/').slice(-2).join('/')}</span>` : '';
   const label = a.label||a.project||a.agent;
   return `<div class="agent${a.status==='blocked'?' blocked':''}" role="button" tabindex="0" aria-label="${label}, ${a.status}" onclick="openTerminal('${a.pane_id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openTerminal('${a.pane_id}')}">
-    <span class="dot" style="background:${color}" aria-hidden="true"></span>
+    <span class="dot${pulseClass}" style="background:${color}" aria-hidden="true"></span>
     <div class="info"><div class="project">${label}${host}</div><div class="meta">${a.agent} · ${cwd}</div></div>
     <span style="color:var(--muted);font-size:1.2rem" aria-hidden="true">›</span>
   </div>`;
@@ -560,9 +590,29 @@ function sendQueuedKeys() {
 
 function toggleKeysDock() {
   const el = document.getElementById('termKeys');
+  const quick = document.getElementById('quickDock');
   const show = el.style.display === 'none';
   el.style.display = show ? '' : 'none';
+  if (show) quick.style.display = 'none'; // mutual exclusive
   if(window.cue) cue(show ? 'page' : 'tick');
+}
+
+function toggleQuickDock() {
+  const el = document.getElementById('quickDock');
+  const keys = document.getElementById('termKeys');
+  const show = el.style.display === 'none';
+  el.style.display = show ? '' : 'none';
+  if (show) keys.style.display = 'none'; // mutual exclusive
+  if(window.cue) cue(show ? 'page' : 'tick');
+}
+
+function quickSend(text) {
+  if (!ws || !activePane) return;
+  if(window.cue) cue('success');
+  ws.send(JSON.stringify({type:'send_text', pane_id: activePane, text: text}));
+  ws.send(JSON.stringify({type:'send_keys', pane_id: activePane, keys:['Enter']}));
+  document.getElementById('quickDock').style.display = 'none';
+  setTimeout(refreshPane, 500);
 }
 
 function switchKeyTab(tab) {
