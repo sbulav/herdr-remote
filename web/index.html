@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;herdr-remote&quot;,&quot;short_name&quot;:&quot;herdr&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%230a0a0a&quot;,&quot;theme_color&quot;:&quot;%230a0a0a&quot;}">
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;herdr-remote&quot;,&quot;short_name&quot;:&quot;herdr&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%23e1e2e7&quot;,&quot;theme_color&quot;:&quot;%23e1e2e7&quot;}">
 <title>herdr-remote</title>
 <script type="module">
 import { play, bind } from 'https://esm.sh/cuelume@0.1.2';
@@ -14,9 +14,16 @@ document.addEventListener('DOMContentLoaded', () => bind());
 </script>
 <style>
 :root {
-  --bg: #f0eee9; --surface: #f5f3ee; --border: #d8d6d0; --text: #1a1a18; --muted: #6b6b66;
-  --green: #2d9f52; --red: #c73e3e; --blue: #4a9eff; --orange: #b8860b;
-  --term-bg: #1a1d22; --term-text: #c8cdd4;
+  --bg: #e1e2e7; --surface: #d8d9e0; --border: #b6bbd1; --text: #1f2f66; --muted: #68709a;
+  --green: #587539; --red: #f52a65; --blue: #2e7de9; --orange: #8c6c3e;
+  --term-bg: #1a1b26; --term-text: #c0caf5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1b26; --surface: #202331; --border: #2f3549; --text: #c0caf5; --muted: #565f89;
+    --green: #9ece6a; --red: #f7768e; --blue: #7aa2f7; --orange: #e0af68;
+    --term-bg: #1a1b26; --term-text: #c0caf5;
+  }
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -245,7 +252,7 @@ body { font-family: -apple-system, system-ui, -webkit-system-font, sans-serif; b
 <!-- Command palette -->
 <div id="cmdPalette" style="display:none;position:fixed;inset:0;z-index:100;">
   <div onclick="closePalette()" style="position:absolute;inset:0;background:rgba(0,0,0,0.5)"></div>
-  <div style="position:absolute;bottom:0;left:0;right:0;max-height:70dvh;background:var(--surface);border-top-left-radius:16px;border-top-right-radius:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,8px)">
+  <div style="position:absolute;bottom:0;left:0;right:0;max-height:50dvh;background:var(--surface);border-top-left-radius:16px;border-top-right-radius:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,8px)">
     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
       <span style="font-size:0.8rem;font-weight:600;flex:1">Commands</span>
       <button onclick="closePalette()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer">✕</button>
