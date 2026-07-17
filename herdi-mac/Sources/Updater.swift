@@ -6,7 +6,7 @@ import Observation
 final class Updater {
     static let shared = Updater()
 
-    let currentVersion = "0.6.1"
+    let currentVersion = "0.6.3"
     let repo = "dcolinmorgan/herdr-remote"
 
     var latestVersion: String?
