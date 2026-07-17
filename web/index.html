@@ -7,6 +7,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;herdr-remote&quot;,&quot;short_name&quot;:&quot;herdr&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%230a0a0a&quot;,&quot;theme_color&quot;:&quot;%230a0a0a&quot;}">
 <title>herdr-remote</title>
+<script type="module">
+import { play, bind } from 'https://esm.sh/cuelume@0.1.2';
+window.cue = play;
+document.addEventListener('DOMContentLoaded', () => bind());
+</script>
 <style>
 :root {
   --bg: #1a1b26; --surface: #24283b; --border: #3b4261; --text: #c0caf5; --muted: #565f89;
@@ -274,7 +279,7 @@ function connect() {
   let wsUrl = url;
   if (token) wsUrl += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
   ws = new WebSocket(wsUrl);
-  ws.onopen = () => setStatus('connected');
+  ws.onopen = () => { setStatus('connected'); if(window.cue) cue('ready'); };
   ws.onclose = () => { setStatus('disconnected'); setTimeout(connect, 3000); };
   ws.onerror = () => setStatus('disconnected');
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
@@ -322,6 +327,7 @@ function handleMessage(msg) {
     const a = agents.find(x => x.pane_id === msg.pane_id);
     if (a) { a.status='blocked'; a.prompt=msg.prompt; a.options=msg.options; }
     else agents.push({...msg, status:'blocked'});
+    if(window.cue) cue('chime');
     timeline.unshift({project: msg.project, agent: msg.agent, status: 'blocked', time: new Date()});
     if (timeline.length > 100) timeline.pop();
     render();
@@ -487,10 +493,12 @@ const CTRL_PRESETS = [
 const DANGER_KEYS = new Set(['ctrl+c','ctrl+d','ctrl+z']);
 
 function fireKey(k) {
+  if(window.cue) cue('tick');
   const composed = armedMod ? `${armedMod}+${k}` : k;
   if (keyQueue.length > 0 || armedMod) {
     keyQueue.push(composed);
     armedMod = null;
+    if(window.cue) cue('droplet');
     renderKeyQueue();
     renderMods();
   } else {
@@ -500,6 +508,7 @@ function fireKey(k) {
 
 function armMod(m) {
   armedMod = armedMod === m ? null : m;
+  if(window.cue) cue('toggle');
   renderMods();
 }
 
@@ -531,6 +540,7 @@ function removeQueueKey(i) { keyQueue.splice(i,1); renderKeyQueue(); }
 function clearKeyQueue() { keyQueue=[]; armedMod=null; renderKeyQueue(); renderMods(); }
 function sendQueuedKeys() {
   if (!keyQueue.length) return;
+  if(window.cue) cue('success');
   sendKeys(keyQueue);
   keyQueue=[]; armedMod=null; renderKeyQueue(); renderMods();
 }
@@ -568,6 +578,7 @@ function pressCtrl(label) {
   // Two-tap confirm for danger keys
   if (preset.danger && ctrlConfirm !== label) {
     ctrlConfirm = label;
+    if(window.cue) cue('error');
     const el = document.getElementById('ctrlPresets');
     el.innerHTML = CTRL_PRESETS.map(p => {
       const cls = p.danger ? (p.label===label?'ctrl-key confirm':'ctrl-key danger') : 'ctrl-key';
@@ -583,7 +594,7 @@ function pressCtrl(label) {
 
 function toggleArrows(){}
 function hideArrows(){}
-function respond(t){if(!ws||!activePane)return;ws.send(JSON.stringify({type:'respond',pane_id:activePane,text:t}));document.getElementById('quickActions').innerHTML='';setTimeout(refreshPane,500);}
+function respond(t){if(!ws||!activePane)return;if(window.cue)cue('success');ws.send(JSON.stringify({type:'respond',pane_id:activePane,text:t}));document.getElementById('quickActions').innerHTML='';setTimeout(refreshPane,500);}
 document.getElementById('termInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendText();}});
 document.getElementById('termContent').addEventListener('scroll', function() {
   const el = this;
@@ -650,6 +661,7 @@ function getAgentCommands() {
 }
 
 function openCommandPalette() {
+  if(window.cue) cue('page');
   document.getElementById('cmdPalette').style.display = '';
   document.getElementById('cmdSearch').value = '';
   filterCommands();
