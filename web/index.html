@@ -14,8 +14,9 @@ document.addEventListener('DOMContentLoaded', () => bind());
 </script>
 <style>
 :root {
-  --bg: #1a1b26; --surface: #24283b; --border: #3b4261; --text: #c0caf5; --muted: #565f89;
-  --green: #9ece6a; --red: #f7768e; --blue: #7aa2f7; --orange: #ff9e64;
+  --bg: #f0eee9; --surface: #f5f3ee; --border: #d8d6d0; --text: #1a1a18; --muted: #6b6b66;
+  --green: #2d9f52; --red: #c73e3e; --blue: #4a9eff; --orange: #b8860b;
+  --term-bg: #1a1d22; --term-text: #c8cdd4;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -62,7 +63,7 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .term-header .back { background: none; border: none; color: var(--blue); font-size: 1.4rem; cursor: pointer; padding: 4px 8px; }
 .term-header .title { flex: 1; font-size: 0.8rem; font-weight: 500; }
 .term-header .refresh-btn { background: none; border: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; }
-.term-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px; background: color-mix(in srgb, var(--bg) 90%, black); font-family: 'SF Mono', 'Menlo', monospace; font-size: 0.8rem; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; word-break: break-all; color: var(--text); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.term-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px; background: var(--term-bg); font-family: 'SF Mono', 'Menlo', monospace; font-size: 0.8rem; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; word-break: break-all; color: var(--term-text); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .quick-actions { padding: 8px 12px; border-top: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
 .quick-actions button { padding: 10px 14px; border-radius: 8px; border: none; font-size: 0.75rem; font-weight: 600; cursor: pointer; flex: 1; min-width: 70px; }
 .btn-yes { background: var(--green); color: #000; } .btn-trust { background: var(--blue); color: #fff; } .btn-no { background: var(--red); color: #fff; }
@@ -215,10 +216,10 @@ let activeWorkspace = null;
 
 // Settings — auto-detect relay when served from same origin
 const autoRelayUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
-const isServedFromRelay = !location.hostname.includes('pages.dev') && !location.hostname.includes('localhost');
 const DEMO_RELAY = 'wss://herdr-remote-demo.yyrzrh5wfg.workers.dev';
 const isDemo = location.hostname.includes('herdr-demo.pages.dev');
-const savedUrl = localStorage.getItem('herdr_relay_url') || (isServedFromRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
+const isSelfRelay = !isDemo && !location.hostname.includes('pages.dev') && !location.hostname.includes('localhost');
+const savedUrl = localStorage.getItem('herdr_relay_url') || (isSelfRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
 const savedToken = localStorage.getItem('herdr_relay_token') || '';
 document.getElementById('relayUrl').value = savedUrl;
 document.getElementById('relayToken').value = savedToken;
@@ -270,7 +271,7 @@ function saveAndConnect() {
 
 // Connection
 function connect() {
-  let url = localStorage.getItem('herdr_relay_url') || (isServedFromRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
+  let url = localStorage.getItem('herdr_relay_url') || (isSelfRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
   if (!url) { showSetup(); return; }
   if (ws) ws.close();
   setStatus('connecting');
