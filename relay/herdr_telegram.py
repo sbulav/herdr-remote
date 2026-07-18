@@ -60,6 +60,15 @@ async def read_pane(pane_id: str, lines: int = 15) -> str:
     return "(no response)"
 
 
+# --- Auth guard ---
+
+def authorized(update: Update) -> bool:
+    """Reject messages from unauthorized users."""
+    if not CHAT_ID:
+        return True  # No restriction if CHAT_ID not set (first-run discovery mode)
+    return str(update.effective_chat.id) == CHAT_ID
+
+
 # --- Bot commands ---
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -304,6 +313,9 @@ async def cmd_digest(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Handle inline keyboard button presses."""
     query = update.callback_query
+    if CHAT_ID and str(update.effective_chat.id) != CHAT_ID:
+        await query.answer("Unauthorized")
+        return
     await query.answer()
 
     data = json.loads(query.data)
@@ -516,16 +528,21 @@ async def relay_listener(app: Application):
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("agents", cmd_agents))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("read", cmd_read))
-    app.add_handler(CommandHandler("reply", cmd_reply))
-    app.add_handler(CommandHandler("send", cmd_send))
-    app.add_handler(CommandHandler("trust", cmd_trust))
-    app.add_handler(CommandHandler("digest", cmd_digest))
-    app.add_handler(CommandHandler("interrupt", cmd_interrupt))
+    if CHAT_ID:
+        auth_filter = filters.Chat(chat_id=int(CHAT_ID))
+    else:
+        auth_filter = filters.ALL  # No restriction in discovery mode
+
+    app.add_handler(CommandHandler("agents", cmd_agents, filters=auth_filter))
+    app.add_handler(CommandHandler("status", cmd_status, filters=auth_filter))
+    app.add_handler(CommandHandler("read", cmd_read, filters=auth_filter))
+    app.add_handler(CommandHandler("reply", cmd_reply, filters=auth_filter))
+    app.add_handler(CommandHandler("send", cmd_send, filters=auth_filter))
+    app.add_handler(CommandHandler("trust", cmd_trust, filters=auth_filter))
+    app.add_handler(CommandHandler("digest", cmd_digest, filters=auth_filter))
+    app.add_handler(CommandHandler("interrupt", cmd_interrupt, filters=auth_filter))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & auth_filter, handle_text))
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

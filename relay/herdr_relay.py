@@ -1,15 +1,43 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["websockets>=14.0", "zeroconf>=0.80.0"]
+# dependencies = ["websockets>=14.0", "zeroconf>=0.80.0", "pywebpush>=2.0.0", "py-vapid>=1.9.0"]
 # ///
 """herdr-remote relay — polls herdr, accepts push events (HTTP POST + WebSocket + UDP), broadcasts to clients."""
-import asyncio, glob, json, os, re, shlex, signal, socket, sqlite3, subprocess, uuid
+import asyncio, glob, json, logging, os, re, shlex, signal, socket, sqlite3, subprocess, time, uuid
 
 try:
     from websockets.asyncio.server import serve
 except ImportError:
     from websockets.server import serve
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
+
+from logging.handlers import RotatingFileHandler
+import sys
+
+def _get_log_dir():
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Logs/herdr-remote")
+    if os.path.isdir("/var/log") and os.access("/var/log", os.W_OK):
+        return "/var/log/herdr-remote"
+    return os.path.expanduser("~/.local/state/herdr-remote/log")
+
+LOG_DIR = os.environ.get("HERDR_LOG_DIR", _get_log_dir())
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "relay.log")
+AUDIT_FILE = os.path.join(LOG_DIR, "audit.log")
+
+_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+_file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
+_file_handler.setFormatter(_formatter)
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_formatter)
+
+log = logging.getLogger("herdr-relay")
+log.setLevel(logging.INFO)
+log.addHandler(_file_handler)
+log.addHandler(_console_handler)
+logging.getLogger("websockets").setLevel(logging.WARNING)
 
 HERDR = os.environ.get("HERDR_BIN", "/opt/homebrew/bin/herdr")
 WS_PORT = int(os.environ.get("HERDR_RELAY_PORT", "8375"))
@@ -24,6 +52,13 @@ CLAUDE_PROJECTS = os.environ.get("HERDR_CLAUDE_PROJECTS", "~/.claude/projects")
 OPENCODE_DB = os.environ.get("HERDR_OPENCODE_DB", "~/.local/share/opencode/opencode-stable.db")
 TRANSCRIPT_MAX_BYTES = 262144  # tail window read per poll — bounds ssh transfer
 TRANSCRIPT_BLOCK_LIMIT = 200   # most recent blocks kept per session
+
+# VAPID Web Push
+VAPID_PUBLIC_KEY = os.environ.get("HERDR_VAPID_PUBLIC", "")
+VAPID_PRIVATE_KEY = os.environ.get("HERDR_VAPID_PRIVATE", "")
+VAPID_SUBJECT = os.environ.get("HERDR_VAPID_SUBJECT", "mailto:herdr@localhost")
+push_subscriptions = []  # list of PushSubscription dicts
+PUSH_SUBS_FILE = os.path.join(LOG_DIR, "push_subs.json")
 
 # Remote hosts: comma-separated SSH targets
 REMOTES = [r.strip() for r in os.environ.get("HERDR_REMOTES", "").split(",") if r.strip()]
@@ -58,6 +93,96 @@ request_results = {}
 pane_cwd_map = {}      # pane_id -> (cwd, agent, remote, ambiguous agent/cwd)
 subscriptions = {}     # ws -> pane_id the client is currently viewing
 stream_sigs = {}       # (id(ws), pane_id) -> signature of the last blocks pushed
+known_panes = set()
+pane_response_options = {}
+
+SAFE_RESPONSES = {"y", "n", "a", "yes", "no", "trust", "yes, single permission", "trust, always allow", "no (tab to edit)", "approve all pending", "configure individually", "exit (cancel subagents)"}
+SAFE_KEYS = {"y", "n", "a", "Enter", "Tab", "Escape", "Space", "C-c", "Ctrl+c", "Up", "Down", "Left", "Right", "BSpace", *map(str, range(1, 10))}
+
+
+def is_safe_key(key):
+    if key in SAFE_KEYS:
+        return True
+    return bool(re.fullmatch(r"(?:ctrl|shift)\+(?:[a-z]|[1-9]|Enter|Tab|Escape|Space|Up|Down|Left|Right)", key))
+
+# --- Audit logging ---
+_audit_handler = RotatingFileHandler(AUDIT_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
+_audit_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S"))
+audit_log = logging.getLogger("herdr-audit")
+audit_log.setLevel(logging.INFO)
+audit_log.addHandler(_audit_handler)
+audit_log.propagate = False
+
+
+def audit(action: str, ip: str, device: str, pane_id: str, detail: str = ""):
+    """Append a write action to the audit log as structured JSONL."""
+    import datetime
+    entry = {
+        "ts": datetime.datetime.utcnow().isoformat() + "Z",
+        "action": action,
+        "paneId": pane_id,
+        "ip": ip,
+        "device": device,
+    }
+    if detail:
+        entry["detail"] = detail[:120]  # truncate like collie
+    audit_log.info(json.dumps(entry, separators=(",", ":")))
+
+
+# --- Web Push helpers ---
+def _load_push_subs():
+    global push_subscriptions
+    if os.path.isfile(PUSH_SUBS_FILE):
+        try:
+            with open(PUSH_SUBS_FILE) as f:
+                push_subscriptions = json.load(f)
+        except Exception:
+            push_subscriptions = []
+
+
+def _save_push_subs():
+    with open(PUSH_SUBS_FILE, "w") as f:
+        json.dump(push_subscriptions, f)
+
+
+async def send_web_push(title: str, body: str, url: str = "/", clear: bool = False):
+    """Send push notification to all registered subscriptions.
+
+    Uses collapse topic + TTL so offline devices get only the latest.
+    If clear=True, sends a clear instruction instead of showing a notification.
+    """
+    if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+        return
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        log.warning("pywebpush not installed, skipping push")
+        return
+    if clear:
+        payload = json.dumps({"type": "clear", "tag": "herdr-blocked"})
+    else:
+        payload = json.dumps({"title": title, "body": body, "url": url})
+    headers = {"Topic": "herdr-herd", "TTL": "21600"}  # 6h TTL, collapse key
+    dead = []
+    for i, sub in enumerate(push_subscriptions):
+        try:
+            webpush(
+                subscription_info=sub,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_SUBJECT},
+                headers=headers,
+            )
+        except Exception as e:
+            log.warning("Push failed for sub %d: %s", i, e)
+            if "410" in str(e) or "404" in str(e):
+                dead.append(i)
+    if dead:
+        for i in reversed(dead):
+            push_subscriptions.pop(i)
+        _save_push_subs()
+
+_load_push_subs()
 
 
 def load_presets():
@@ -155,11 +280,14 @@ def get_agents_from_host(remote=None, host_id=None):
             {
                 "pane_id": p["pane_id"],
                 "agent": p.get("agent", ""),
+                "label": p.get("label", ""),
                 "status": p.get("agent_status", "unknown"),
                 "cwd": p.get("cwd", ""),
                 "project": os.path.basename(p.get("cwd", "")),
                 "host": host_label,
                 "remote": remote,
+                "workspace_id": p.get("workspace_id", ""),
+                "tab_id": p.get("tab_id", ""),
             }
             for p in panes if p.get("agent")
         ]
@@ -199,9 +327,9 @@ async def get_all_agents():
 
 
 def read_pane(pane_id, remote=None):
-    raw = run_herdr("pane", "read", pane_id, "--lines", "20", "--source", "recent", remote=remote)
+    raw = run_herdr("pane", "read", pane_id, "--lines", "50", "--source", "recent", remote=remote)
     lines = [l for l in raw.splitlines() if l.strip() and not CHROME_RE.search(l)]
-    return "\n".join(lines[-6:])
+    return "\n".join(lines[-20:])
 
 
 def _numbered_options(text):
@@ -582,8 +710,12 @@ async def broadcast(msg):
     for ws in clients.copy():
         try:
             await ws.send(data)
+        except (ConnectionClosedError, ConnectionClosedOK):
+            dead.add(ws)
         except Exception:
             dead.add(ws)
+    if dead:
+        log.debug("Removed %d dead client(s)", len(dead))
     clients.difference_update(dead)
 
 
@@ -606,6 +738,8 @@ async def poll_loop():
         pane_remote_map.clear()
         session_target_map.clear()
         pane_cwd_map.clear()
+        known_panes.clear()
+        known_panes.update(current_pane_ids)
         agent_cwd_counts = {}
         for a in agents:
             if a.get("agent") in ("claude", "opencode") and a.get("cwd"):
@@ -632,6 +766,9 @@ async def poll_loop():
             if status == "blocked" and last_statuses.get(pid) != "blocked":
                 content = read_pane(pid, remote=a.get("remote"))
                 options = detect_options(content)
+                pane_response_options[pid] = {
+                    option.lower() for option in (options or TOOL_OPTIONS)
+                }
                 await broadcast({
                     "type": "blocked", "pane_id": pid,
                     "agent": a["agent"], "project": a["project"],
@@ -639,9 +776,18 @@ async def poll_loop():
                     "prompt": content[:500],
                     "options": options or TOOL_OPTIONS
                 })
+                await send_web_push(
+                    title=f"🐑 {a['project']} blocked",
+                    body=content[:120],
+                    url=f"/?pane={pid}",
+                )
+            if status != "blocked" and last_statuses.get(pid) == "blocked":
+                pane_response_options.pop(pid, None)
+                await send_web_push("", "", clear=True)
             last_statuses[pid] = status
         for pid in set(last_statuses) - current_pane_ids:
             del last_statuses[pid]
+            pane_response_options.pop(pid, None)
 
         # Live-stream structured transcript blocks to subscribed clients. Only
         # watched Claude panes are read; a changed signature (path or content)
@@ -747,9 +893,54 @@ async def process_request(connection, request):
         ])
         return Response(204, "No Content", headers, b"")
 
+    # Serve web app for GET / or GET /index.html
+    path = (request.path or "/").split("?")[0]
+    if path in ("/", "/index.html"):
+        web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+        index_path = os.path.join(web_dir, "index.html")
+        if os.path.isfile(index_path):
+            with open(index_path, "rb") as f:
+                body = f.read()
+            headers = Headers([
+                ("Content-Type", "text/html; charset=utf-8"),
+                ("Cache-Control", "no-cache"),
+            ])
+            return Response(200, "OK", headers, body)
+
+    # Serve service worker
+    if path == "/sw.js":
+        web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+        sw_path = os.path.join(web_dir, "sw.js")
+        if os.path.isfile(sw_path):
+            with open(sw_path, "rb") as f:
+                body = f.read()
+            headers = Headers([
+                ("Content-Type", "application/javascript"),
+                ("Cache-Control", "no-cache"),
+                ("Service-Worker-Allowed", "/"),
+            ])
+            return Response(200, "OK", headers, body)
+
+    # Serve VAPID public key
+    if path == "/api/vapid-public-key":
+        body = json.dumps({"publicKey": VAPID_PUBLIC_KEY}).encode()
+        headers = Headers([
+            ("Content-Type", "application/json"),
+            ("Access-Control-Allow-Origin", "*"),
+        ])
+        return Response(200, "OK", headers, body)
+
+    # Serve logo.svg
+    if path == "/logo.svg":
+        web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+        svg_path = os.path.join(web_dir, "logo.svg")
+        if os.path.isfile(svg_path):
+            with open(svg_path, "rb") as f:
+                body = f.read()
+            headers = Headers([("Content-Type", "image/svg+xml")])
+            return Response(200, "OK", headers, body)
+
     # HTTP POST — parse event from URL query params as fallback
-    # (since we can't read request body in websockets 16)
-    # Plugins should encode payload in the URL path: POST /push?payload=...
     import urllib.parse
     if "?" in (request.path or ""):
         _, qs = request.path.split("?", 1)
@@ -766,7 +957,33 @@ async def process_request(connection, request):
 
 
 async def handle_client(ws):
+    remote_addr = getattr(ws, "remote_address", None)
+    ip = remote_addr[0] if remote_addr else "unknown"
+    request = getattr(ws, "request", None)
+    headers = request.headers if request else getattr(ws, "request_headers", {})
+    ua = headers.get("User-Agent", "unknown")
+    origin = headers.get("Origin", "")
+
+    device = "unknown"
+    ua_lower = ua.lower()
+    if "iphone" in ua_lower or "ipad" in ua_lower:
+        device = "iOS"
+    elif "android" in ua_lower:
+        device = "Android"
+    elif "macintosh" in ua_lower or "mac os" in ua_lower:
+        device = "macOS"
+    elif "windows" in ua_lower:
+        device = "Windows"
+    elif "linux" in ua_lower:
+        device = "Linux"
+    elif "telegram" in ua_lower or "bot" in ua_lower:
+        device = "bot"
+    elif "python" in ua_lower:
+        device = "script"
+
+    log.info("Client connected: ip=%s device=%s origin=%s", ip, device, origin or "-")
     clients.add(ws)
+    connected_at = time.monotonic()
     try:
         async for raw in ws:
             try:
@@ -807,8 +1024,19 @@ async def handle_client(ws):
                 await ws.send(json.dumps(response))
             elif msg_type == "respond":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
+                text = msg.get("text", "")
+                normalized_text = text.strip().lower()
+                allowed_responses = SAFE_RESPONSES | pane_response_options.get(pane_id, set())
+                if normalized_text not in allowed_responses:
+                    await ws.send(json.dumps({"type": "error", "message": "response not in allowlist"}))
+                    continue
                 remote = pane_remote_map.get(pane_id)
-                kind, payload = respond_action(msg.get("text", ""))
+                log.info("Response from %s (%s): pane=%s text=%r", ip, device, pane_id, text)
+                audit("respond", ip, device, pane_id, f"text={text!r}")
+                kind, payload = respond_action(text)
                 if kind == "keys":
                     run_herdr("pane", "send-keys", pane_id, *payload, remote=remote)
                 else:
@@ -817,6 +1045,9 @@ async def handle_client(ws):
                 event_queue.put_nowait(msg)
             elif msg_type == "read_pane":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
                 lines = msg.get("lines", "30")
                 remote = pane_remote_map.get(pane_id)
                 content = run_herdr("pane", "read", pane_id, "--lines", str(lines), "--source", "recent", remote=remote)
@@ -834,6 +1065,7 @@ async def handle_client(ws):
                 await ws.send(json.dumps(payload))
                 options = detect_options(content) if last_statuses.get(pane_id) == "blocked" else None
                 if options:
+                    pane_response_options[pane_id] = {option.lower() for option in options}
                     await ws.send(json.dumps({
                         "type": "blocked",
                         "pane_id": pane_id,
@@ -860,15 +1092,57 @@ async def handle_client(ws):
                     stream_sigs.pop((id(ws), previous), None)
             elif msg_type == "send_keys":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
                 keys = msg.get("keys", [])
+                if not all(is_safe_key(k) for k in keys):
+                    await ws.send(json.dumps({"type": "error", "message": "keys contain disallowed values"}))
+                    continue
                 remote = pane_remote_map.get(pane_id)
+                log.info("Keys from %s (%s): pane=%s keys=%s", ip, device, pane_id, keys)
+                audit("send_keys", ip, device, pane_id, f"keys={keys}")
                 run_herdr("pane", "send-keys", pane_id, *keys, remote=remote)
             elif msg_type == "send_text":
                 pane_id = msg["pane_id"]
+                if pane_id not in known_panes:
+                    await ws.send(json.dumps({"type": "error", "message": "unknown pane_id"}))
+                    continue
                 text = msg.get("text", "")
+                if not text or len(text) > 1000:
+                    await ws.send(json.dumps({"type": "error", "message": "text empty or too long"}))
+                    continue
                 remote = pane_remote_map.get(pane_id)
+                log.info("Text from %s (%s): pane=%s text=%r", ip, device, pane_id, text)
+                audit("send_text", ip, device, pane_id, f"text={text!r}")
                 run_herdr("pane", "send-text", pane_id, text, remote=remote)
+            elif msg_type == "create_tab":
+                workspace_id = msg.get("workspace_id", "")
+                if workspace_id:
+                    log.info("Create tab from %s (%s): workspace=%s", ip, device, workspace_id)
+                    audit("create_tab", ip, device, "", f"workspace={workspace_id}")
+                    run_herdr("tab", "create", "--workspace", workspace_id, "--focus")
+                    await ws.send(json.dumps({"type": "tab_created", "ok": True}))
+                else:
+                    await ws.send(json.dumps({"type": "error", "message": "workspace_id required"}))
+            elif msg_type == "push_subscribe":
+                sub = msg.get("subscription")
+                if sub and sub not in push_subscriptions:
+                    push_subscriptions.append(sub)
+                    _save_push_subs()
+                    log.info("Push subscription added from %s (%s)", ip, device)
+                await ws.send(json.dumps({"type": "push_subscribed", "ok": True}))
+            elif msg_type == "push_unsubscribe":
+                sub = msg.get("subscription")
+                if sub and sub in push_subscriptions:
+                    push_subscriptions.remove(sub)
+                    _save_push_subs()
+                await ws.send(json.dumps({"type": "push_unsubscribed", "ok": True}))
+    except (ConnectionClosedError, ConnectionClosedOK):
+        pass
     finally:
+        duration = int(time.monotonic() - connected_at)
+        log.info("Client disconnected: ip=%s device=%s duration=%ds", ip, device, duration)
         clients.discard(ws)
         subscriptions.pop(ws, None)
         for key in [k for k in stream_sigs if k[0] == id(ws)]:
@@ -994,10 +1268,10 @@ def start_mdns():
         )
         zc = Zeroconf()
         threading.Thread(target=zc.register_service, args=(info,), daemon=True).start()
-        print(f"mDNS registering at {ip}")
+        log.info("mDNS registering at %s", ip)
         return zc, info
     except Exception as e:
-        print(f"mDNS skipped: {e}")
+        log.warning("mDNS skipped: %s", e)
         return None, None
 
 
@@ -1007,15 +1281,15 @@ async def main():
     try:
         await loop.create_datagram_endpoint(UDPPlugin, local_addr=("127.0.0.1", 8376))
     except OSError:
-        print("UDP 8376 in use, plugin push disabled")
+        log.warning("UDP 8376 in use, plugin push disabled")
     server = await serve(handle_client, "0.0.0.0", WS_PORT, process_request=process_request)
     background_tasks = [
         asyncio.create_task(poll_loop(), name="poll-loop"),
         asyncio.create_task(event_push(), name="event-push"),
     ]
     hosts = ["local"] + REMOTES
-    print(f"herdr-remote relay on :{WS_PORT} (WebSocket + HTTP POST)")
-    print(f"  polling: {', '.join(hosts)}")
+    log.info("herdr-remote relay on :%d (WebSocket + HTTP POST)", WS_PORT)
+    log.info("Polling: %s", ", ".join(hosts))
     stop = loop.create_future()
     for task in background_tasks:
         task.add_done_callback(lambda completed: fail_on_background_exit(completed, stop))

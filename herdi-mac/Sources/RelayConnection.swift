@@ -287,7 +287,7 @@ final class RelayConnection {
                     var args = ["pane", "send-keys", realId]
                     args.append(contentsOf: keys)
                     if let host {
-                        _ = runSSH(host, "herdr", arguments: args)
+                        _ = runSSH(host, arguments: ["herdr"] + args)
                     } else {
                         _ = runHerdr(arguments: args)
                     }
@@ -304,6 +304,36 @@ final class RelayConnection {
             // Relay maps labels (incl. OpenCode keys) itself.
             guard let data = try? JSONEncoder().encode(response) else { return }
             task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
+        }
+    }
+
+    func focusPane(_ paneId: String) {
+        let host = agents.first(where: { $0.id == paneId })?.host
+        let remote = host == nil || host == "local" ? nil : host
+        let realId = remote.map { _ in
+            String(paneId.drop(while: { $0 != ":" }).dropFirst())
+        } ?? paneId
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            if let remote {
+                _ = runSSH(remote, "herdr", "pane", "focus", realId)
+            } else {
+                _ = runHerdr("pane", "focus", realId)
+            }
+        }
+    }
+
+    func interruptPane(_ paneId: String) {
+        let host = agents.first(where: { $0.id == paneId })?.host
+        let remote = host == nil || host == "local" ? nil : host
+        let realId = remote.map { _ in
+            String(paneId.drop(while: { $0 != ":" }).dropFirst())
+        } ?? paneId
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            if let remote {
+                _ = runSSH(remote, "herdr", "pane", "send-keys", realId, "Ctrl+c")
+            } else {
+                _ = runHerdr("pane", "send-keys", realId, "Ctrl+c")
+            }
         }
     }
 

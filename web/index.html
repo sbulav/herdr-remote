@@ -2,65 +2,41 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="https://herdr.dev/assets/logo.png">
-<link rel="icon" href="https://herdr.dev/assets/logo.svg">
-<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;herdr remote&quot;,&quot;short_name&quot;:&quot;herdr&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%230d1117&quot;,&quot;theme_color&quot;:&quot;%230d1117&quot;,&quot;icons&quot;:[{&quot;src&quot;:&quot;https://herdr.dev/assets/logo.png&quot;,&quot;sizes&quot;:&quot;512x512&quot;,&quot;type&quot;:&quot;image/png&quot;}]}">
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;herdr-remote&quot;,&quot;short_name&quot;:&quot;herdr&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%23e1e2e7&quot;,&quot;theme_color&quot;:&quot;%23e1e2e7&quot;}">
 <title>herdr-remote</title>
+<script type="module">
+import { play, bind } from 'https://esm.sh/cuelume@0.1.2';
+window.cue = play;
+document.addEventListener('DOMContentLoaded', () => bind());
+</script>
 <style>
 :root {
-  --bg: #0d1117; --surface: #161b22; --border: #21262d; --text: #e6edf3; --muted: #7d8590;
-  --green: #3fb950; --red: #f85149; --blue: #58a6ff; --orange: #d29922;
+  --bg: #e1e2e7; --surface: #d8d9e0; --border: #b6bbd1; --text: #1f2f66; --muted: #68709a;
+  --green: #587539; --red: #f52a65; --blue: #2e7de9; --orange: #8c6c3e;
+  --term-bg: #1a1b26; --term-text: #c0caf5;
 }
-[data-theme="herdr"] {
-  --bg: #d9dad8; --surface: #e8e9e6; --border: #c5c6c3; --text: #303438; --muted: #6a6e72;
-  --green: #3a8a5c; --red: #c44b4b; --blue: #4a7eb8; --orange: #b87a30;
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1b26; --surface: #202331; --border: #2f3549; --text: #c0caf5; --muted: #565f89;
+    --green: #9ece6a; --red: #f7768e; --blue: #7aa2f7; --orange: #e0af68;
+    --term-bg: #1a1b26; --term-text: #c0caf5;
+  }
 }
-[data-theme="light"] {
-  --bg: #ffffff; --surface: #f6f8fa; --border: #d1d9e0; --text: #1f2328; --muted: #636c76;
-  --green: #1a7f37; --red: #cf222e; --blue: #0969da; --orange: #9a6700;
-}
-[data-theme="sand"] {
-  --bg: #faf6f1; --surface: #ffffff; --border: #e8e0d5; --text: #2c2416; --muted: #7a6e5e;
-  --green: #4a7c4e; --red: #b8423a; --blue: #4a6fa5; --orange: #b07830;
-}
-[data-theme="clay"] {
-  --bg: #1a1614; --surface: #242019; --border: #362f26; --text: #e4dcd0; --muted: #9c8e7c;
-  --green: #8fae6a; --red: #d4705a; --blue: #7ca5c4; --orange: #d4a05a;
-}
-[data-theme="dune"] {
-  --bg: #20191a; --surface: #2b2122; --border: #3d302e; --text: #e8d8cc; --muted: #a08878;
-  --green: #b5bd68; --red: #cc6666; --blue: #81a2be; --orange: #de935f;
-}
-[data-theme="nord"] {
-  --bg: #242933; --surface: #2e3440; --border: #3b4252; --text: #d8dee9; --muted: #616e88;
-  --green: #a3be8c; --red: #bf616a; --blue: #88c0d0; --orange: #d08770;
-}
-[data-theme="rose"] {
-  --bg: #191724; --surface: #1f1d2e; --border: #26233a; --text: #e0def4; --muted: #6e6a86;
-  --green: #9ccfd8; --red: #eb6f92; --blue: #c4a7e7; --orange: #f6c177;
-}
-[data-theme="dracula"] {
-  --bg: #21222c; --surface: #282a36; --border: #343746; --text: #f8f8f2; --muted: #6272a4;
-  --green: #50fa7b; --red: #ff5555; --blue: #8be9fd; --orange: #ffb86c;
-}
-[data-theme="kanagawa"] {
-  --bg: #1f1f28; --surface: #2a2a37; --border: #363646; --text: #dcd7ba; --muted: #727169;
-  --green: #76946a; --red: #c34043; --blue: #7e9cd8; --orange: #ffa066;
-}
-[data-theme="midnight"] {
-  --bg: #0b0e14; --surface: #11141b; --border: #1c2029; --text: #bfbdb6; --muted: #545c6a;
-  --green: #7fd962; --red: #d95757; --blue: #59c2ff; --orange: #e6b450;
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; }
 
-.header { padding: 12px 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
-.header h1 { font-size: 1rem; flex: 1; }
-.header button { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 4px; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+*:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+body { font-family: -apple-system, system-ui, -webkit-system-font, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; min-height: -webkit-fill-available; display: flex; flex-direction: column; width: 100%; overflow-x: hidden; }
+
+.header { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.header h1 { font-size: 1rem; font-weight: 700; letter-spacing: -0.02em; }
+.header button { background: none; border: none; color: var(--muted); cursor: pointer; padding: 8px; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 8px; transition: color 0.15s, background 0.15s; }
+.header button:hover { color: var(--text); background: var(--border); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot.pulse { animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .view { flex: 1; overflow-y: auto; }
 
@@ -73,33 +49,31 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .setting-group input { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; }
 .setting-group select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; }
 .setting-group .hint { font-size: 0.65rem; color: var(--muted); margin-top: 4px; }
-.setting-group button { margin-top: 8px; padding: 8px 16px; border-radius: 6px; border: none; background: var(--blue); color: #fff; font-weight: 600; font-size: 13px; cursor: pointer; }
-.theme-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.theme-btn { padding: 8px; border-radius: 6px; border: 2px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.7rem; cursor: pointer; text-align: center; }
-.theme-btn.active { border-color: var(--blue); }
+.setting-group button { margin-top: 8px; padding: 8px 16px; border-radius: 6px; border: none; background: var(--green); color: #000; font-weight: 600; font-size: 13px; cursor: pointer; }
+
 
 /* Agent list */
 .agents { padding: 12px; }
-.section-header { font-size: 0.65rem; text-transform: uppercase; color: var(--muted); margin: 12px 0 6px; display: flex; align-items: center; gap: 5px; }
-.agent { background: var(--surface); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; cursor: pointer; position: relative; }
-.agent:active { opacity: 0.7; }
-.agent .agent-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; background: var(--border); color: var(--text); flex-shrink: 0; font-weight: 600; }
-.agent .agent-icon.kiro { background: #1a73e8; color: #fff; }
-.agent .agent-icon.codex { background: #10a37f; color: #fff; }
-.agent .agent-icon.claude { background: #d97706; color: #fff; }
-.agent .agent-icon.grok { background: #000; color: #fff; }
-.agent .agent-icon.pi { background: #7c3aed; color: #fff; }
-.agent .info { flex: 1; min-width: 0; }
-.agent .project { font-size: 0.85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.agent .meta { font-size: 0.65rem; color: var(--muted); }
-.agent .menu-btn { background: none; border: none; color: var(--muted); font-size: 1.2rem; padding: 4px 8px; cursor: pointer; flex-shrink: 0; }
-
-/* Context menu */
-.ctx-menu { display: none; position: fixed; z-index: 200; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 0; min-width: 160px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
-.ctx-menu.show { display: block; }
-.ctx-menu button { display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; background: none; color: var(--text); font-size: 0.8rem; cursor: pointer; }
-.ctx-menu button:active { background: var(--border); }
-.ctx-menu .danger { color: var(--red); }
+.section-header { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; display: flex; align-items: center; gap: 5px; }
+.agent { background: var(--surface); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--border); transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+.agent:hover { border-color: color-mix(in srgb, var(--text) 20%, transparent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.agent:active { transform: scale(0.99); box-shadow: none; }
+.agent .dot { width: 10px; height: 10px; }
+.agent.blocked { border-color: var(--red); background: color-mix(in srgb, var(--red) 5%, var(--surface)); }
+.workspace-card { border-color: color-mix(in srgb, var(--text) 10%, transparent); }
+.count-pill { display: inline-block; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--text) 8%, transparent); font-size: 0.65rem; }
+.chip-strip { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.chip-strip::-webkit-scrollbar { display: none; }
+.chip-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
+.chip { padding: 6px 14px; border-radius: 9999px; border: none; font-size: 0.8rem; font-weight: 500; white-space: nowrap; cursor: pointer; position: relative; transition: all 0.15s; background: var(--border); color: var(--muted); }
+.chip.active { background: var(--blue); color: #fff; }
+.chip.alert::after { content: ''; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); border: 2px solid var(--bg); }
+.chip:active { transform: scale(0.95); }
+.chip-add { border: 2px dashed var(--border); background: transparent; color: var(--muted); font-size: 1rem; padding: 4px 12px; }
+.chip-add:hover { border-color: var(--blue); color: var(--blue); }
+.agent .info { flex: 1; }
+.agent .project { font-size: 0.9rem; font-weight: 500; }
+.agent .meta { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
 
 /* Terminal view */
 .terminal-view { display: none; flex-direction: column; position: fixed; inset: 0; top: 49px; background: var(--bg); z-index: 50; }
@@ -108,50 +82,86 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 .term-header .back { background: none; border: none; color: var(--blue); font-size: 1.4rem; cursor: pointer; padding: 4px 8px; }
 .term-header .title { flex: 1; font-size: 0.8rem; font-weight: 500; }
 .term-header .refresh-btn { background: none; border: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; }
-.term-content { flex: 1; overflow-y: auto; padding: 12px; background: #000; font-family: 'SF Mono', 'Menlo', monospace; font-size: 0.85rem; line-height: 1.5; white-space: pre-wrap; color: #ccc; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.term-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px; background: var(--term-bg); font-family: 'SF Mono', 'Menlo', monospace; font-size: 0.8rem; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; word-break: break-all; color: var(--term-text); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .quick-actions { padding: 8px 12px; border-top: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
-.quick-actions button { padding: 10px 14px; border-radius: 8px; border: none; font-size: 0.75rem; font-weight: 600; cursor: pointer; flex: 1; min-width: 70px; }
-.btn-yes { background: var(--green); color: #000; } .btn-trust { background: var(--blue); color: #fff; } .btn-no { background: var(--red); color: #fff; }
+.quick-actions button { padding: 10px 14px; border-radius: 8px; border: none; font-size: 0.8rem; font-weight: 600; cursor: pointer; flex: 1; min-width: 70px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-yes { background: var(--green); color: #fff; } .btn-trust { background: var(--blue); color: #fff; } .btn-no { background: var(--red); color: #fff; }
 .term-input { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; gap: 6px; background: var(--surface); flex-shrink: 0; }
-.term-input input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 14px; font-family: monospace; }
-.term-input button { padding: 10px 14px; border-radius: 6px; border: none; background: var(--blue); color: #fff; font-weight: 700; font-size: 16px; }
-.term-keys { border-top: 1px solid var(--border); padding: 6px 8px; display: flex; gap: 4px; background: var(--surface); flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom, 6px); align-items: center; }
-.term-keys button { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap; }
-.term-keys button:active { background: var(--border); }
-.term-keys .spacer { flex: 1; }
-.arrow-toggle { position: relative; }
-.arrow-popup { display: none; position: absolute; bottom: 44px; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-.arrow-popup.show { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; }
-.arrow-popup button { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.arrow-popup button:active { background: var(--border); }
-.arrow-popup .empty { visibility: hidden; }
+.term-input input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 14px; font-family: monospace; min-width: 0; }
+.term-input button:last-child { padding: 10px 14px; border-radius: 6px; border: none; background: var(--blue); color: #fff; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+.term-keys { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; flex-direction: column; background: var(--surface); flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom, 8px); }
+.nav-key { padding: 10px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; min-height: 44px; display: flex; align-items: center; justify-content: center; transition: background 0.15s, border-color 0.15s; }
+.nav-key:active { background: var(--border); transform: scale(0.97); }
+.mod-key { font-size: 12px; }
+.mod-key.armed { background: var(--blue); border-color: var(--blue); color: #fff; }
+.tab-btn { padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.tab-btn.active { background: var(--surface); color: var(--text); border-color: var(--blue); }
+.ctrl-key { padding: 10px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; min-height: 44px; }
+.ctrl-key:active { background: var(--border); }
+.ctrl-key.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 30%, var(--border)); }
+.ctrl-key.confirm { background: var(--red); color: #fff; border-color: var(--red); }
+.digit-key { padding: 14px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 18px; font-family: monospace; font-weight: 600; cursor: pointer; min-height: 52px; display: flex; align-items: center; justify-content: center; }
+.digit-key:active { background: var(--border); }
+.queue-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: color-mix(in srgb, var(--text) 5%, var(--bg)); font-family: monospace; font-size: 12px; font-weight: 500; cursor: pointer; }
+.queue-chip:hover { border-color: var(--red); }
+.queue-chip.danger { border-color: color-mix(in srgb, var(--red) 40%, var(--border)); color: var(--red); }
 
 .empty { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 0.85rem; }
+
+/* Desktop */
+@media (min-width: 768px) {
+  body { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  .terminal-view { position: static; display: none; }
+  .terminal-view.active { display: flex; height: calc(100dvh - 49px); }
+  .agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .section-header { grid-column: 1 / -1; }
+  .chip-strip { grid-column: 1 / -1; }
+  .term-content { min-height: 400px; }
+}
+@media (min-width: 1200px) {
+  body { max-width: 1100px; }
+  .agents { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+}
+@media (max-width: 380px) {
+  .header { padding: 10px 12px; }
+  .header h1 { font-size: 0.9rem; }
+  .agents { padding: 8px; }
+  .agent { padding: 12px; }
+  .term-input { padding: 6px 8px; gap: 4px; }
+  .term-keys { padding: 6px 8px; }
+}
+@media (pointer: fine) {
+  .quick-actions button { flex: none; min-width: auto; padding: 8px 18px; }
+}
 </style>
 </head>
 <body>
 
 <div class="header">
   <span class="dot" id="statusDot"></span>
-  <h1><img src="https://herdr.dev/assets/logo.svg" alt="herdr" style="height:20px;vertical-align:middle;margin-right:6px;border-radius:4px"> remote</h1>
-  <span id="agentCount" style="font-size:0.7rem;color:var(--muted)"></span>
-  <button onclick="toggleTimeline()">🕐</button>
-  <button onclick="toggleSettings()">⚙</button>
+  <h1>herdr</h1>
+  <span id="connLabel" style="font-size:0.65rem;font-weight:500"></span>
+  <span id="agentCount" style="font-size:0.7rem;color:var(--muted);margin-left:auto"></span>
+  <button onclick="toggleTimeline()" aria-label="Timeline"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+  <button onclick="toggleSettings()" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
 </div>
 
 <div class="settings" id="settingsView">
   <h2>Settings</h2>
   <div class="setting-group">
-    <label>Relay URL</label>
+    <label for="relayUrl">Relay URL</label>
     <input id="relayUrl" type="url" placeholder="wss://your-tunnel.trycloudflare.com" />
-    <label style="margin-top:8px">Token (optional)</label>
+    <label for="relayToken" style="margin-top:8px">Token (optional)</label>
     <input id="relayToken" type="password" placeholder="shared secret" />
     <button onclick="saveAndConnect()">Connect</button>
     <div class="hint">Run <code>./relay/start.sh</code> to get a URL. <a href="https://github.com/dcolinmorgan/herdr-remote/blob/main/QUICKSTART.md" style="color:var(--blue)">Setup guide →</a></div>
   </div>
+
   <div class="setting-group">
-    <label>Theme</label>
-    <div class="theme-grid" id="themeGrid"></div>
+    <label>Push Notifications</label>
+    <div id="pushStatus" style="font-size:0.75rem;margin-bottom:6px"></div>
+    <button id="pushToggle" onclick="togglePush()">Enable Push</button>
+    <div class="hint">Get notified when agents are blocked, even with this tab closed.</div>
   </div>
   <div class="setting-group">
     <label>Status</label>
@@ -169,69 +179,110 @@ body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg);
 
 <div class="terminal-view" id="terminalView">
   <div class="term-header">
-    <button class="back" onclick="closeTerminal()">‹</button>
+    <button class="back" onclick="closeTerminal()" aria-label="Back to agent list"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
     <span class="title" id="termTitle"></span>
-    <button class="refresh-btn" onclick="refreshPane()">↻</button>
+    <button class="refresh-btn" onclick="refreshPane()" aria-label="Refresh pane"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
   </div>
   <div class="term-content" id="termContent">Loading…</div>
   <div class="quick-actions" id="quickActions"></div>
   <div class="term-input">
+    <button onclick="openCommandPalette()" aria-label="Commands" style="padding:10px 12px;border-radius:6px;border:1px solid var(--blue);background:var(--bg);color:var(--blue);font-weight:700;font-size:14px;flex-shrink:0">/</button>
     <input id="termInput" placeholder="Type…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-    <button onclick="sendText()">⏎</button>
+    <button onclick="toggleQuickDock()" aria-label="Quick actions" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--orange);flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></button>
+    <button onclick="toggleKeysDock()" aria-label="Keys" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M7 16h10"/></svg></button>
+    <button onclick="sendText()" aria-label="Send" style="padding:10px 14px;border-radius:6px;border:none;background:var(--blue);color:#fff;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
   </div>
-  <div class="term-keys">
-    <button onclick="sendKey('Tab')">⇥</button>
-    <button onclick="sendKey('Escape')">Esc</button>
-    <button onclick="sendKeys(['Ctrl+c'])">^C</button>
-    <button onclick="sendKey('y')">y</button>
-    <button onclick="sendKey('n')">n</button>
-    <span class="spacer"></span>
-    <div class="arrow-toggle">
-      <button onclick="toggleArrows()">↕</button>
-      <div class="arrow-popup" id="arrowPopup">
-        <button class="empty"></button><button onclick="sendKey('Up');hideArrows()">↑</button><button class="empty"></button>
-        <button onclick="sendKey('Left');hideArrows()">←</button><button onclick="sendKey('Enter');hideArrows()">⏎</button><button onclick="sendKey('Right');hideArrows()">→</button>
-        <button class="empty"></button><button onclick="sendKey('Down');hideArrows()">↓</button><button class="empty"></button>
+  <div class="term-keys" id="termKeys" style="display:none">
+    <!-- Key queue strip (visible when composing) -->
+    <div id="keyQueueStrip" style="display:none;width:100%;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;flex-wrap:wrap;gap:4px;align-items:center"></div>
+    <!-- Tab toggle -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;width:100%;margin-bottom:6px">
+      <button class="tab-btn active" id="tabKeys" onclick="switchKeyTab('keys')">Keys</button>
+      <button class="tab-btn" id="tabDigits" onclick="switchKeyTab('digits')">123</button>
+    </div>
+    <!-- Keys pad -->
+    <div id="keysPad" style="width:100%">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:4px">
+        <button class="nav-key" onclick="fireKey('Escape')">Esc</button>
+        <button class="nav-key" style="grid-column:span 2" onclick="fireKey('Space')">Space</button>
+        <button class="nav-key" onclick="fireKey('Enter')">⏎ Enter</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:4px">
+        <button class="nav-key" onclick="fireKey('Tab')">Tab</button>
+        <button class="nav-key" onclick="fireKey('Left')">←</button>
+        <button class="nav-key" onclick="fireKey('Down')">↓</button>
+        <button class="nav-key" onclick="fireKey('Up')">↑</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:4px">
+        <button class="nav-key" onclick="fireKey('Right')">→</button>
+        <button class="nav-key mod-key" id="modShift" onclick="armMod('shift')">⇧ Shift</button>
+        <button class="nav-key mod-key" id="modCtrl" onclick="armMod('ctrl')">Ctrl</button>
+      </div>
+      <!-- Ctrl presets -->
+      <div>
+        <button onclick="toggleCtrlPresets()" style="background:none;border:none;color:var(--muted);font-size:0.7rem;cursor:pointer;padding:2px 4px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase">Presets <span id="ctrlChevron">▸</span></button>
+        <div id="ctrlPresets" style="display:none;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px"></div>
       </div>
     </div>
-    <button onclick="document.getElementById('termInput').blur()">⌨↓</button>
+    <!-- Digits pad -->
+    <div id="digitsPad" style="display:none;width:100%;grid-template-columns:repeat(3,1fr);gap:4px"></div>
+    <!-- Action keys for blocked state -->
+    <div id="actionKeys" style="width:100%;margin-top:4px"></div>
+  </div>
+  <!-- Quick actions dock -->
+  <div class="term-keys" id="quickDock" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:8px">
+      <span style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)">Quick Actions</span>
+      <button onclick="toggleQuickDock()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer">✕</button>
+    </div>
+    <div style="width:100%">
+      <p style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:4px">Confirm</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">
+        <button class="nav-key" style="color:var(--green);border-color:var(--green)" onclick="quickSend('yes')">yes</button>
+        <button class="nav-key" style="color:var(--red);border-color:var(--red)" onclick="quickSend('no')">no</button>
+      </div>
+      <p style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:4px">Common</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+        <button class="nav-key" onclick="quickSend('continue')">continue</button>
+        <button class="nav-key" onclick="quickSend('retry')">retry</button>
+        <button class="nav-key" onclick="quickSend('skip')">skip</button>
+        <button class="nav-key" onclick="quickSend('commit and push')">commit & push</button>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="ctx-menu" id="ctxMenu">
-  <button onclick="ctxAction('terminal')">📺 Open Terminal</button>
-  <button onclick="ctxAction('approve')" id="ctxApprove" style="display:none">✅ Approve</button>
-  <button onclick="ctxAction('read')">📋 Read Output</button>
-  <button class="danger" onclick="ctxAction('interrupt')">⚠ Send ^C</button>
+<!-- Command palette -->
+<div id="cmdPalette" style="display:none;position:fixed;inset:0;z-index:100;">
+  <div onclick="closePalette()" style="position:absolute;inset:0;background:rgba(0,0,0,0.5)"></div>
+  <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:420px;max-height:50dvh;background:var(--surface);border-top-left-radius:16px;border-top-right-radius:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,8px)">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <span style="font-size:0.8rem;font-weight:600;flex:1">Commands</span>
+      <button onclick="closePalette()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer">✕</button>
+    </div>
+    <input id="cmdSearch" type="text" placeholder="Search commands…" autocomplete="off" autocorrect="off" style="margin:8px 12px;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px" oninput="filterCommands()" />
+    <div id="cmdList" style="overflow-y:auto;padding:4px 12px;"></div>
+  </div>
 </div>
 
 <script>
-const THEMES = ['dark','herdr','light','sand','clay','dune','nord','rose','dracula','kanagawa','midnight'];
-let ws = null, agents = [], activePane = null, refreshInterval = null;
-let timeline = [], prevStatuses = {};
 
-// Settings
-const DEFAULT_RELAY = 'wss://your-relay.example.com';
-const DEFAULT_TOKEN = 'YOUR_TOKEN_HERE';
-const savedUrl = localStorage.getItem('herdr_relay_url') || DEFAULT_RELAY;
-const savedTheme = localStorage.getItem('herdr_theme') || 'dark';
-const savedToken = localStorage.getItem('herdr_relay_token') || DEFAULT_TOKEN;
+let ws = null, agents = [], activePane = null, refreshInterval = null, userScrolledUp = false;
+let timeline = [], prevStatuses = {};
+let activeWorkspace = null;
+let activeTab = null;
+
+// Settings — auto-detect relay when served from same origin
+const autoRelayUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+const DEMO_RELAY = 'wss://herdr-remote-demo.yyrzrh5wfg.workers.dev';
+const isDemo = location.hostname.includes('herdr-demo.pages.dev');
+const isSelfRelay = !isDemo && !location.hostname.includes('pages.dev') && !location.hostname.includes('localhost');
+const savedUrl = localStorage.getItem('herdr_relay_url') || (isSelfRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
+const savedToken = localStorage.getItem('herdr_relay_token') || '';
 document.getElementById('relayUrl').value = savedUrl;
 document.getElementById('relayToken').value = savedToken;
-applyTheme(savedTheme);
 
-function applyTheme(t) {
-  document.documentElement.setAttribute('data-theme', t);
-  localStorage.setItem('herdr_theme', t);
-  renderThemeGrid();
-}
-function renderThemeGrid() {
-  const cur = localStorage.getItem('herdr_theme') || 'dark';
-  document.getElementById('themeGrid').innerHTML = THEMES.map(t =>
-    `<button class="theme-btn ${t===cur?'active':''}" onclick="applyTheme('${t}')">${t}</button>`
-  ).join('');
-}
-renderThemeGrid();
+
 
 function toggleSettings() {
   const s = document.getElementById('settingsView');
@@ -278,16 +329,16 @@ function saveAndConnect() {
 
 // Connection
 function connect() {
-  let url = localStorage.getItem('herdr_relay_url');
+  let url = localStorage.getItem('herdr_relay_url') || (isSelfRelay ? autoRelayUrl : (isDemo ? DEMO_RELAY : ''));
   if (!url) { showSetup(); return; }
   if (ws) ws.close();
   setStatus('connecting');
-  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  // Append token as query param if stored separately
   const token = localStorage.getItem('herdr_relay_token');
   let wsUrl = url;
   if (token) wsUrl += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
   ws = new WebSocket(wsUrl);
-  ws.onopen = () => setStatus('connected');
+  ws.onopen = () => { setStatus('connected'); if(window.cue) cue('ready'); };
   ws.onclose = () => { setStatus('disconnected'); setTimeout(connect, 3000); };
   ws.onerror = () => setStatus('disconnected');
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
@@ -295,16 +346,30 @@ function connect() {
 
 function setStatus(s) {
   const dot = document.getElementById('statusDot');
+  const label = document.getElementById('connLabel');
   dot.style.background = s==='connected'?'var(--green)':s==='connecting'?'var(--orange)':'var(--red)';
+  label.textContent = s==='connected'?'live':s==='connecting'?'connecting…':'offline';
+  label.style.color = s==='connected'?'var(--green)':s==='connecting'?'var(--orange)':'var(--red)';
 }
 
 function showSetup() {
   document.getElementById('agents').innerHTML = `<div class="empty">
     <p style="font-size:1.5rem;margin-bottom:12px">🐑</p>
-    <p><strong>Welcome to herdr-remote</strong></p>
-    <p style="margin-top:8px">Tap ⚙ to enter your relay URL</p>
-    <p style="margin-top:12px;font-size:0.7rem;color:var(--muted)">Need a URL? Run on your Mac:<br><code>cloudflared tunnel --url http://localhost:8375</code></p>
+    <p><strong>herdr-remote</strong></p>
+    <p style="margin-top:8px">Monitor & approve agents from your phone</p>
+    <p style="margin-top:16px"><button onclick="tryDemo()" style="padding:10px 20px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-weight:600;font-size:0.85rem;cursor:pointer">Try Demo</button></p>
+    <p style="margin-top:16px;font-size:0.75rem;color:var(--muted);text-align:left;max-width:280px;margin-left:auto;margin-right:auto">
+      <strong>Connect your own:</strong><br>
+      1. Run: <code style="font-size:0.7rem">cd relay && ./start.sh</code><br>
+      2. Tap ⚙ → paste the wss:// URL<br>
+    </p>
   </div>`;
+}
+function tryDemo() {
+  localStorage.setItem('herdr_relay_url', 'wss://herdr-remote-demo.yyrzrh5wfg.workers.dev');
+  localStorage.removeItem('herdr_relay_token');
+  document.getElementById('relayUrl').value = 'wss://herdr-remote-demo.yyrzrh5wfg.workers.dev';
+  connect();
 }
 
 function handleMessage(msg) {
@@ -331,86 +396,129 @@ function handleMessage(msg) {
     const a = agents.find(x => x.pane_id === msg.pane_id);
     if (a) { a.status='blocked'; a.prompt=msg.prompt; a.options=msg.options; }
     else agents.push({...msg, status:'blocked'});
+    if(window.cue) cue('chime');
     timeline.unshift({project: msg.project, agent: msg.agent, status: 'blocked', time: new Date()});
     if (timeline.length > 100) timeline.pop();
     render();
     if (activePane === msg.pane_id) renderQuickActions(agents.find(x => x.pane_id === msg.pane_id));
     notify(msg.agent || 'Agent', msg.project || '');
   } else if (msg.type === 'pane_content' && msg.pane_id === activePane) {
-    document.getElementById('termContent').textContent = msg.content || '(empty)';
-    document.getElementById('termContent').scrollTop = 99999;
-  }
-}
-
-function notify(agent, project) {
-  if (Notification.permission === 'granted') {
-    new Notification('Agent Blocked', { body: `${agent} needs input in ${project}`, icon: '🐑' });
+    const el = document.getElementById('termContent');
+    const prevHeight = el.scrollHeight;
+    const prevScroll = el.scrollTop;
+    el.textContent = msg.content || '(empty)';
+    if (userScrolledUp) {
+      // Keep scroll position relative to bottom (content may have grown at top)
+      const growth = el.scrollHeight - prevHeight;
+      el.scrollTop = prevScroll + growth;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
   }
 }
 
 function render() {
-  const blocked = agents.filter(a => a.status==='blocked');
-  const working = agents.filter(a => a.status==='working');
-  const idle = agents.filter(a => a.status==='idle'||a.status==='unknown');
   document.getElementById('agentCount').textContent = agents.length ? `${agents.length}` : '';
+  const workspaces = [...new Set(agents.map(a => a.workspace_id).filter(Boolean))];
+  if (workspaces.length <= 1) {
+    activeWorkspace = null;
+    activeTab = null;
+    renderAgentList(agents);
+    return;
+  }
+  renderWorkspaces(workspaces);
+}
+
+function renderWorkspaces(workspaces) {
   let html = '';
-  if (blocked.length) html += section('Blocked', 'var(--red)', blocked);
+  // Hoist blocked agents
+  const blocked = agents.filter(a => a.status === 'blocked');
+  if (blocked.length) {
+    html += `<div class="section-header" style="color:var(--red)"><span class="dot" style="background:var(--red)"></span>Needs you <span style="opacity:0.6">(${blocked.length})</span></div>`;
+    html += blocked.map(a => agentCard(a)).join('');
+  }
+  // Space chip strip
+  html += `<div class="chip-strip"><span class="chip-label">Spaces</span>`;
+  html += `<button class="chip${activeWorkspace===null?' active':''}" onclick="backToWorkspaces()">All</button>`;
+  for (const wsId of workspaces) {
+    const wsAgents = agents.filter(a => a.workspace_id === wsId);
+    const hasBlocked = wsAgents.some(a => a.status === 'blocked');
+    const name = wsAgents[0]?.project || wsId.slice(0, 8);
+    html += `<button class="chip${activeWorkspace===wsId?' active':''}${hasBlocked?' alert':''}" onclick="selectWorkspace('${wsId}')">${name}</button>`;
+  }
+  html += `</div>`;
+  // Tab chip strip (always show when workspace selected)
+  if (activeWorkspace) {
+    const wsTabs = [...new Set(agents.filter(a => a.workspace_id === activeWorkspace).map(a => a.tab_id).filter(Boolean))];
+    html += `<div class="chip-strip"><span class="chip-label">Tabs</span>`;
+    if (wsTabs.length > 1) {
+      html += `<button class="chip${!activeTab?' active':''}" onclick="selectTab(null)">All</button>`;
+    }
+    wsTabs.forEach((tid, i) => {
+      const tabAgents = agents.filter(a => a.tab_id === tid);
+      const hasBlocked = tabAgents.some(a => a.status === 'blocked');
+      const tabLabel = tabAgents[0]?.label || 'Tab '+(i+1);
+      html += `<button class="chip${activeTab===tid?' active':''}${hasBlocked?' alert':''}" onclick="selectTab('${tid}')">${tabLabel}</button>`;
+    });
+    html += `<button class="chip chip-add" onclick="createTab('${activeWorkspace}')">+</button>`;
+    html += `</div>`;
+  }
+  // Agent list (filtered)
+  let filtered = agents;
+  if (activeWorkspace) filtered = filtered.filter(a => a.workspace_id === activeWorkspace);
+  if (activeTab) filtered = filtered.filter(a => a.tab_id === activeTab);
+  // Don't re-show blocked that are already hoisted
+  const working = filtered.filter(a => a.status==='working');
+  const done = filtered.filter(a => a.status==='done');
+  const idle = filtered.filter(a => a.status==='idle'||a.status==='unknown');
   if (working.length) html += section('Working', 'var(--green)', working);
+  if (done.length) html += section('Done', 'var(--muted)', done);
   if (idle.length) html += section('Idle', 'var(--muted)', idle);
   if (!agents.length) html = '<div class="empty">Waiting for agents…</div>';
   document.getElementById('agents').innerHTML = html;
 }
 
+function renderAgentList(list) {
+  const blocked = list.filter(a => a.status==='blocked');
+  const working = list.filter(a => a.status==='working');
+  const done = list.filter(a => a.status==='done');
+  const idle = list.filter(a => a.status==='idle'||a.status==='unknown');
+  let html = '';
+  if (blocked.length) html += section('Blocked', 'var(--red)', blocked);
+  if (working.length) html += section('Working', 'var(--green)', working);
+  if (done.length) html += section('Done', 'var(--muted)', done);
+  if (idle.length) html += section('Idle', 'var(--muted)', idle);
+  if (!list.length) html = '<div class="empty">Waiting for agents…</div>';
+  document.getElementById('agents').innerHTML = html;
+}
+
+function selectWorkspace(id) { activeWorkspace = id; activeTab = null; render(); }
+function backToWorkspaces() { activeWorkspace = null; activeTab = null; render(); }
+function selectTab(id) { activeTab = id; render(); }
+
+function createTab(workspaceId) {
+  if (!ws) return;
+  if (window.cue) cue('sparkle');
+  ws.send(JSON.stringify({type:'create_tab', workspace_id: workspaceId}));
+  setTimeout(() => { activeTab = null; }, 1500);
+}
+
+function agentCard(a) {
+  const color = a.status==='blocked'?'var(--red)':a.status==='working'?'var(--green)':'var(--muted)';
+  const pulseClass = a.status==='working'?' pulse':'';
+  const host = a.host&&a.host!=='local'?` <span style="color:var(--orange);font-size:0.6rem">@${a.host}</span>`:'';
+  const cwd = a.cwd ? `<span style="font-family:monospace;opacity:0.7">${a.cwd.split('/').slice(-2).join('/')}</span>` : '';
+  const label = a.label||a.project||a.agent;
+  return `<div class="agent${a.status==='blocked'?' blocked':''}" role="button" tabindex="0" aria-label="${label}, ${a.status}" onclick="openTerminal('${a.pane_id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openTerminal('${a.pane_id}')}">
+    <span class="dot${pulseClass}" style="background:${color}" aria-hidden="true"></span>
+    <div class="info"><div class="project">${label}${host}</div><div class="meta">${a.agent} · ${cwd}</div></div>
+    <span style="color:var(--muted);font-size:1.2rem" aria-hidden="true">›</span>
+  </div>`;
+}
+
 function section(title, color, list) {
   return `<div class="section-header"><span class="dot" style="background:${color}"></span>${title}</div>` +
-    list.map(a => {
-      const host = a.host&&a.host!=='local'?` <span style="color:var(--orange);font-size:0.6rem">@${a.host}</span>`:'';
-      const icon = agentIcon(a.agent);
-      return `<div class="agent" onclick="openTerminal('${a.pane_id}')">
-        <div class="agent-icon ${icon.cls}">${icon.label}</div>
-        <div class="info"><div class="project">${a.project||a.agent}${host}</div><div class="meta">${a.agent} · ${a.status}</div></div>
-        <button class="menu-btn" onclick="event.stopPropagation();showCtx(event,'${a.pane_id}')">⋯</button>
-      </div>`;
-    }).join('');
-}
-
-function agentIcon(name) {
-  const n = (name||'').toLowerCase();
-  if (n.includes('kiro')) return {cls:'kiro', label:'K'};
-  if (n.includes('codex')) return {cls:'codex', label:'Cx'};
-  if (n.includes('claude')) return {cls:'claude', label:'C'};
-  if (n.includes('grok')) return {cls:'grok', label:'G'};
-  if (n.includes('pi')) return {cls:'pi', label:'π'};
-  if (n.includes('copilot')) return {cls:'kiro', label:'Co'};
-  return {cls:'', label: (name||'?')[0].toUpperCase()};
-}
-
-let ctxTarget = null;
-function showCtx(e, paneId) {
-  ctxTarget = paneId;
-  const menu = document.getElementById('ctxMenu');
-  const a = agents.find(x => x.pane_id === paneId);
-  document.getElementById('ctxApprove').style.display = a&&a.status==='blocked' ? '' : 'none';
-  menu.style.top = Math.min(e.clientY, window.innerHeight - 180) + 'px';
-  menu.style.left = Math.min(e.clientX - 120, window.innerWidth - 170) + 'px';
-  menu.classList.add('show');
-  setTimeout(() => document.addEventListener('click', hideCtx, {once:true}), 10);
-}
-function hideCtx() { document.getElementById('ctxMenu').classList.remove('show'); }
-function ctxAction(action) {
-  hideCtx();
-  if (!ctxTarget) return;
-  if (action === 'terminal') openTerminal(ctxTarget);
-  else if (action === 'approve') {
-    const a = agents.find(x => x.pane_id === ctxTarget);
-    if (!a) return;
-    activePane = ctxTarget;
-    const opts = a.options || [];
-    const yes = opts.find(o => /yes|approve/i.test(o)) || opts[0] || '1. Yes';
-    respond(yes);
-  }
-  else if (action === 'read') { activePane = ctxTarget; refreshPane(); openTerminal(ctxTarget); }
-  else if (action === 'interrupt') { ws.send(JSON.stringify({type:'send_keys',pane_id:ctxTarget,keys:['Ctrl+c']})); }
+    list.map(a => agentCard(a)).join('');
 }
 
 function optionClass(o) {
@@ -439,12 +547,14 @@ function renderQuickActions(a) {
 }
 
 function openTerminal(paneId) {
-  activePane = paneId;
+  activePane = paneId; paneLines = 200; userScrolledUp = false;
   const a = agents.find(x => x.pane_id===paneId);
-  document.getElementById('termTitle').textContent = a?`${a.project} · ${a.agent}`:paneId;
+  document.getElementById('termTitle').textContent = a?`${a.label||a.project} · ${a.agent}`:paneId;
   document.getElementById('agentListView').style.display = 'none';
   document.getElementById('terminalView').classList.add('active');
   renderQuickActions(a);
+  const ak = document.getElementById('actionKeys');
+  ak.innerHTML = '';
   refreshPane();
   refreshInterval = setInterval(refreshPane, 3000);
 }
@@ -455,7 +565,9 @@ function closeTerminal() {
   document.getElementById('agentListView').style.display = '';
 }
 
-function refreshPane() { if(ws&&activePane) ws.send(JSON.stringify({type:'read_pane',pane_id:activePane,lines:50})); }
+let paneLines = 200;
+function refreshPane() { if(ws&&activePane) ws.send(JSON.stringify({type:'read_pane',pane_id:activePane,lines:paneLines})); }
+function loadMore() { paneLines = Math.min(paneLines + 500, 5000); refreshPane(); }
 function sendText() {
   const i=document.getElementById('termInput');
   if(!i.value||!ws||!activePane)return;
@@ -465,12 +577,320 @@ function sendText() {
 }
 function sendKey(k){if(!ws||!activePane)return;ws.send(JSON.stringify({type:'send_keys',pane_id:activePane,keys:[k]}));setTimeout(refreshPane,300);}
 function sendKeys(k){if(!ws||!activePane)return;ws.send(JSON.stringify({type:'send_keys',pane_id:activePane,keys:k}));setTimeout(refreshPane,300);}
-function toggleArrows(){document.getElementById('arrowPopup').classList.toggle('show');}
-function hideArrows(){document.getElementById('arrowPopup').classList.remove('show');}
-function respond(t){if(!ws||!activePane)return;ws.send(JSON.stringify({type:'respond',pane_id:activePane,text:t}));document.getElementById('quickActions').innerHTML='';setTimeout(refreshPane,500);}
-document.getElementById('termInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendText();}});
 
-if (savedUrl) setTimeout(connect, 100);
+// --- Nav Tray (collie-style) ---
+let keyQueue = [], armedMod = null, ctrlConfirm = null;
+const CTRL_PRESETS = [
+  {label:'Ctrl C', keys:['ctrl+c']},
+  {label:'Ctrl D', keys:['ctrl+d'], danger:true},
+  {label:'Ctrl U', keys:['ctrl+u']},
+  {label:'Ctrl R', keys:['ctrl+r']},
+  {label:'Ctrl L', keys:['ctrl+l']},
+  {label:'Ctrl Z', keys:['ctrl+z'], danger:true},
+];
+const DANGER_KEYS = new Set(['ctrl+c','ctrl+d','ctrl+z']);
+
+function fireKey(k) {
+  if(window.cue) cue('tick');
+  const composed = armedMod ? `${armedMod}+${k}` : k;
+  if (keyQueue.length > 0 || armedMod) {
+    keyQueue.push(composed);
+    armedMod = null;
+    if(window.cue) cue('droplet');
+    renderKeyQueue();
+    renderMods();
+  } else {
+    sendKeys([composed]);
+  }
+}
+
+function armMod(m) {
+  armedMod = armedMod === m ? null : m;
+  if(window.cue) cue('toggle');
+  renderMods();
+}
+
+function renderMods() {
+  const s = document.getElementById('modShift');
+  const c = document.getElementById('modCtrl');
+  if (s) s.classList.toggle('armed', armedMod === 'shift');
+  if (c) c.classList.toggle('armed', armedMod === 'ctrl');
+}
+
+function renderKeyQueue() {
+  const strip = document.getElementById('keyQueueStrip');
+  if (!keyQueue.length && !armedMod) { strip.style.display = 'none'; return; }
+  strip.style.display = 'flex';
+  let html = keyQueue.map((k,i) => {
+    const isDanger = DANGER_KEYS.has(k.toLowerCase());
+    const label = k.includes('+') ? k.replace('ctrl+','Ctrl ').replace('shift+','\u21e7 ') : k;
+    return `<span class="queue-chip${isDanger?' danger':''}" onclick="removeQueueKey(${i})">${label} \u00d7</span>`;
+  }).join('');
+  if (armedMod) html += `<span style="color:var(--muted);font-size:12px;padding:4px">${armedMod==='shift'?'\u21e7':'Ctrl'} + \u2026</span>`;
+  html += `<span style="margin-left:auto;display:flex;gap:4px">`;
+  html += `<button onclick="sendQueuedKeys()" style="padding:6px 12px;border-radius:6px;border:none;background:${keyQueue.some(k=>DANGER_KEYS.has(k.toLowerCase()))?'var(--red)':'var(--blue)'};color:#fff;font-size:12px;font-weight:600;cursor:pointer">Send</button>`;
+  html += `<button onclick="clearKeyQueue()" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-size:12px;cursor:pointer">✕</button>`;
+  html += `</span>`;
+  strip.innerHTML = html;
+}
+
+function removeQueueKey(i) { keyQueue.splice(i,1); renderKeyQueue(); }
+function clearKeyQueue() { keyQueue=[]; armedMod=null; renderKeyQueue(); renderMods(); }
+function sendQueuedKeys() {
+  if (!keyQueue.length) return;
+  if(window.cue) cue('success');
+  sendKeys(keyQueue);
+  keyQueue=[]; armedMod=null; renderKeyQueue(); renderMods();
+}
+
+function toggleKeysDock() {
+  const el = document.getElementById('termKeys');
+  const quick = document.getElementById('quickDock');
+  const show = el.style.display === 'none';
+  el.style.display = show ? '' : 'none';
+  if (show) quick.style.display = 'none'; // mutual exclusive
+  if(window.cue) cue(show ? 'page' : 'tick');
+}
+
+function toggleQuickDock() {
+  const el = document.getElementById('quickDock');
+  const keys = document.getElementById('termKeys');
+  const show = el.style.display === 'none';
+  el.style.display = show ? '' : 'none';
+  if (show) keys.style.display = 'none'; // mutual exclusive
+  if(window.cue) cue(show ? 'page' : 'tick');
+}
+
+function quickSend(text) {
+  if (!ws || !activePane) return;
+  if(window.cue) cue('success');
+  ws.send(JSON.stringify({type:'send_text', pane_id: activePane, text: text}));
+  ws.send(JSON.stringify({type:'send_keys', pane_id: activePane, keys:['Enter']}));
+  document.getElementById('quickDock').style.display = 'none';
+  setTimeout(refreshPane, 500);
+}
+
+function switchKeyTab(tab) {
+  document.getElementById('tabKeys').classList.toggle('active', tab==='keys');
+  document.getElementById('tabDigits').classList.toggle('active', tab==='digits');
+  document.getElementById('keysPad').style.display = tab==='keys' ? '' : 'none';
+  const dp = document.getElementById('digitsPad');
+  dp.style.display = tab==='digits' ? 'grid' : 'none';
+  if (tab==='digits' && !dp.innerHTML) {
+    dp.innerHTML = [1,2,3,4,5,6,7,8,9].map(d => `<button class="digit-key" onclick="fireKey('${d}')">${d}</button>`).join('');
+  }
+}
+
+function toggleCtrlPresets() {
+  const el = document.getElementById('ctrlPresets');
+  const chevron = document.getElementById('ctrlChevron');
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'grid' : 'none';
+  chevron.textContent = show ? '\u25be' : '\u25b8';
+  if (show && !el.innerHTML) {
+    el.innerHTML = CTRL_PRESETS.map(p => {
+      const cls = p.danger ? 'ctrl-key danger' : 'ctrl-key';
+      return `<button class="${cls}" onclick="pressCtrl('${p.label}')">${p.label}</button>`;
+    }).join('');
+  }
+}
+
+function pressCtrl(label) {
+  const preset = CTRL_PRESETS.find(p => p.label === label);
+  if (!preset) return;
+  // If composing (queue has items), just stage it
+  if (keyQueue.length > 0) { keyQueue.push(...preset.keys); renderKeyQueue(); return; }
+  // Two-tap confirm for danger keys
+  if (preset.danger && ctrlConfirm !== label) {
+    ctrlConfirm = label;
+    if(window.cue) cue('error');
+    const el = document.getElementById('ctrlPresets');
+    el.innerHTML = CTRL_PRESETS.map(p => {
+      const cls = p.danger ? (p.label===label?'ctrl-key confirm':'ctrl-key danger') : 'ctrl-key';
+      const txt = p.label===label ? 'Confirm?' : p.label;
+      return `<button class="${cls}" onclick="pressCtrl('${p.label}')">${txt}</button>`;
+    }).join('');
+    setTimeout(() => { ctrlConfirm=null; toggleCtrlPresets(); toggleCtrlPresets(); }, 3000);
+    return;
+  }
+  ctrlConfirm = null;
+  sendKeys(preset.keys);
+}
+
+function toggleArrows(){}
+function hideArrows(){}
+function respond(t){if(!ws||!activePane)return;if(window.cue)cue('success');ws.send(JSON.stringify({type:'respond',pane_id:activePane,text:t}));document.getElementById('quickActions').innerHTML='';setTimeout(refreshPane,500);}
+document.getElementById('termInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendText();}});
+document.getElementById('termContent').addEventListener('scroll', function() {
+  const el = this;
+  userScrolledUp = (el.scrollHeight - el.scrollTop - el.clientHeight) > 50;
+  if (el.scrollTop === 0 && paneLines < 5000) loadMore();
+});
+
+if (savedUrl) setTimeout(connect, 100); else showSetup();
+
+// --- Command Palette ---
+const COMMANDS = {
+  claude: [
+    {cmd: '/compact', desc: 'Summarize context to free tokens', common: true},
+    {cmd: '/clear', desc: 'Start fresh conversation', common: true, danger: true},
+    {cmd: '/model', desc: 'Switch model', common: true},
+    {cmd: '/status', desc: 'Show version and connectivity', common: true},
+    {cmd: '/context', desc: 'Visualize context-window usage', common: true},
+    {cmd: '/review', desc: 'Review a pull request', common: true},
+    {cmd: '/diff', desc: 'Show uncommitted changes', common: false},
+    {cmd: '/resume', desc: 'Resume previous conversation', common: false},
+    {cmd: '/help', desc: 'Show all commands', common: false},
+  ],
+  codex: [
+    {cmd: '/compact', desc: 'Summarize history to free context', common: true},
+    {cmd: '/clear', desc: 'Reset and start new chat', common: true, danger: true},
+    {cmd: '/diff', desc: 'Show git diff of working tree', common: true},
+    {cmd: '/model', desc: 'Switch model', common: true},
+    {cmd: '/status', desc: 'Show model and token usage', common: true},
+    {cmd: '/review', desc: 'Code review working tree', common: true},
+    {cmd: '/mention', desc: 'Attach files to context', common: false},
+    {cmd: '/plan', desc: 'Enter plan mode', common: false},
+  ],
+  pi: [
+    {cmd: '/compact', desc: 'Compact context', common: true},
+    {cmd: '/new', desc: 'Start new session', common: true, danger: true},
+    {cmd: '/model', desc: 'Switch model', common: true},
+    {cmd: '/session', desc: 'Show session info', common: true},
+    {cmd: '/tree', desc: 'Jump to earlier point', common: true},
+    {cmd: '/share', desc: 'Share session as gist', common: true},
+    {cmd: '/copy', desc: 'Copy last response', common: false},
+    {cmd: '/reload', desc: 'Reload extensions and skills', common: false},
+  ],
+  opencode: [
+    {cmd: '/compact', desc: 'Compact current session', common: true},
+    {cmd: '/new', desc: 'Start new session', common: true, danger: true},
+    {cmd: '/models', desc: 'List and switch models', common: true},
+    {cmd: '/undo', desc: 'Undo last turn and revert', common: true, danger: true},
+    {cmd: '/share', desc: 'Share session', common: true},
+    {cmd: '/diff', desc: 'Show working changes', common: false},
+    {cmd: '/export', desc: 'Export to Markdown', common: false},
+  ],
+};
+
+function getAgentCommands() {
+  const a = agents.find(x => x.pane_id === activePane);
+  if (!a) return [];
+  const key = (a.agent || '').toLowerCase();
+  if (COMMANDS[key]) return COMMANDS[key];
+  if (key.startsWith('claude')) return COMMANDS.claude;
+  if (key.startsWith('codex')) return COMMANDS.codex;
+  if (key.startsWith('pi') || key === 'kiro') return COMMANDS.pi;
+  if (key.startsWith('opencode')) return COMMANDS.opencode;
+  return COMMANDS.claude; // fallback
+}
+
+function openCommandPalette() {
+  if(window.cue) cue('page');
+  document.getElementById('cmdPalette').style.display = '';
+  document.getElementById('cmdSearch').value = '';
+  filterCommands();
+  document.getElementById('cmdSearch').focus();
+}
+function closePalette() { document.getElementById('cmdPalette').style.display = 'none'; }
+
+function filterCommands() {
+  const q = (document.getElementById('cmdSearch').value || '').toLowerCase();
+  const cmds = getAgentCommands();
+  const filtered = q ? cmds.filter(c => c.cmd.includes(q) || c.desc.toLowerCase().includes(q)) : cmds.filter(c => c.common);
+  const el = document.getElementById('cmdList');
+  if (!filtered.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:0.8rem">No commands match</div>'; return; }
+  el.innerHTML = filtered.map(c => `<div role="button" tabindex="0" onclick="runCommand('${c.cmd}')" onkeydown="if(event.key==='Enter')runCommand('${c.cmd}')" style="padding:10px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;margin-bottom:2px;transition:background 0.15s" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background=''">
+    <span style="font-family:monospace;font-weight:600;font-size:0.85rem;${c.danger?'color:var(--red)':'color:var(--blue)'}">${c.cmd}</span>
+    <span style="flex:1;font-size:0.75rem;color:var(--muted)">${c.desc}</span>
+  </div>`).join('');
+}
+
+function runCommand(cmd) {
+  closePalette();
+  if (!ws || !activePane) return;
+  ws.send(JSON.stringify({type:'send_text', pane_id: activePane, text: cmd}));
+  ws.send(JSON.stringify({type:'send_keys', pane_id: activePane, keys:['Enter']}));
+  setTimeout(refreshPane, 500);
+}
+
+// --- Web Push ---
+let pushSubscription = null;
+
+async function initPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    document.getElementById('pushStatus').textContent = 'Push not supported in this browser';
+    document.getElementById('pushToggle').style.display = 'none';
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    pushSubscription = await reg.pushManager.getSubscription();
+    updatePushUI();
+  } catch (e) {
+    document.getElementById('pushStatus').textContent = 'Service worker error: ' + e.message;
+  }
+}
+
+function updatePushUI() {
+  const btn = document.getElementById('pushToggle');
+  const status = document.getElementById('pushStatus');
+  if (pushSubscription) {
+    btn.textContent = 'Disable Push';
+    btn.style.background = 'var(--red)';
+    status.innerHTML = '<span style="color:var(--green)">● Enabled</span>';
+  } else {
+    btn.textContent = 'Enable Push';
+    btn.style.background = 'var(--green)';
+    status.innerHTML = '<span style="color:var(--muted)">○ Disabled</span>';
+  }
+}
+
+async function togglePush() {
+  if (pushSubscription) {
+    // Unsubscribe
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({type: 'push_unsubscribe', subscription: pushSubscription.toJSON()}));
+    }
+    await pushSubscription.unsubscribe();
+    pushSubscription = null;
+    updatePushUI();
+  } else {
+    // Subscribe
+    try {
+      const relayUrl = localStorage.getItem('herdr_relay_url') || '';
+      const httpUrl = relayUrl.replace('wss://', 'https://').replace('ws://', 'http://');
+      const resp = await fetch(httpUrl + '/api/vapid-public-key');
+      const {publicKey} = await resp.json();
+      if (!publicKey) {
+        document.getElementById('pushStatus').textContent = 'VAPID key not configured on relay';
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      pushSubscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({type: 'push_subscribe', subscription: pushSubscription.toJSON()}));
+      }
+      updatePushUI();
+    } catch (e) {
+      document.getElementById('pushStatus').textContent = 'Error: ' + e.message;
+    }
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+initPush();
 </script>
 </body>
 </html>

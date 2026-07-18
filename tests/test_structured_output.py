@@ -228,6 +228,8 @@ class StructuredOutputTests(unittest.TestCase):
             socket = Socket()
             with (
                 patch.dict(herdr_relay.last_statuses, {"pane-1": status}, clear=True),
+                patch.object(herdr_relay, "known_panes", {"pane-1"}),
+                patch.dict(herdr_relay.pane_response_options, {}, clear=True),
                 patch.object(herdr_relay, "run_herdr", return_value=prompt),
                 patch.object(herdr_relay, "pane_blocks", return_value=(None, None)),
             ):
@@ -489,6 +491,58 @@ class DetectOptionsTests(unittest.TestCase):
 
     def test_unknown_prompt_returns_none(self):
         self.assertIsNone(herdr_relay.detect_options("just some log output"))
+
+
+class RelayInputValidationTests(unittest.TestCase):
+    def test_key_allowlist_covers_the_web_keyboard(self):
+        for key in ("Enter", "Space", "1", "Ctrl+c", "ctrl+d", "shift+1"):
+            with self.subTest(key=key):
+                self.assertTrue(herdr_relay.is_safe_key(key))
+
+        for key in ("--help", "ctrl+;", "arbitrary"):
+            with self.subTest(key=key):
+                self.assertFalse(herdr_relay.is_safe_key(key))
+
+    @patch.object(herdr_relay, "run_herdr")
+    def test_detected_dynamic_response_uses_its_safe_key_mapping(self, run_herdr):
+        class Socket:
+            def __init__(self):
+                self.requests = iter([
+                    json.dumps({
+                        "type": "respond",
+                        "pane_id": "pane-1",
+                        "text": "Allow once",
+                    })
+                ])
+                self.sent = []
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                try:
+                    return next(self.requests)
+                except StopIteration:
+                    raise StopAsyncIteration
+
+            async def send(self, message):
+                self.sent.append(json.loads(message))
+
+        with (
+            patch.object(herdr_relay, "known_panes", {"pane-1"}),
+            patch.dict(
+                herdr_relay.pane_response_options,
+                {"pane-1": {"allow once", "allow always", "reject"}},
+                clear=True,
+            ),
+        ):
+            socket = Socket()
+            asyncio.run(herdr_relay.handle_client(socket))
+
+        self.assertEqual(socket.sent, [])
+        run_herdr.assert_called_once_with(
+            "pane", "send-keys", "pane-1", "Enter", remote=None
+        )
 
 
 if __name__ == "__main__":

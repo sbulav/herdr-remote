@@ -129,7 +129,7 @@ struct MenuBarPanel: View {
             }
             .padding(.leading, 8)
             ForEach(agents) { agent in
-                AgentRow(agent: agent)
+                AgentRow(agent: agent, relay: relay)
                     .onTapGesture {
                         if agent.status == .blocked { selectedAgent = agent }
                     }
@@ -273,6 +273,7 @@ struct SettingsPanel: View {
 
 struct AgentRow: View {
     let agent: Agent
+    let relay: RelayConnection
 
     private var color: Color {
         switch agent.status {
@@ -290,10 +291,23 @@ struct AgentRow: View {
             Text("·").foregroundStyle(.tertiary)
             Text(agent.name).font(.caption).foregroundStyle(.secondary)
             Spacer()
-            Text(agent.status.rawValue).font(.caption2).foregroundStyle(color)
+            // Quick action buttons
             if agent.status == .blocked {
-                Image(systemName: "exclamationmark.bubble.fill").foregroundStyle(.red).font(.caption)
+                Button {
+                    let response = agent.options?.first ?? "yes, single permission"
+                    relay.send(response: ResponseMessage(pane_id: agent.id, text: response))
+                } label: {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                }.buttonStyle(.plain).help("Approve")
             }
+            if agent.status == .working || agent.status == .blocked {
+                Button { relay.interruptPane(agent.id) } label: {
+                    Image(systemName: "stop.circle.fill").foregroundStyle(.red)
+                }.buttonStyle(.plain).help("Interrupt (^C)")
+            }
+            Button { relay.focusPane(agent.id) } label: {
+                Image(systemName: "arrow.right.circle.fill").foregroundStyle(.blue)
+            }.buttonStyle(.plain).help("Open in terminal")
         }
         .padding(.vertical, 4).padding(.horizontal, 8)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
