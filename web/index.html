@@ -69,6 +69,8 @@ body { font-family: -apple-system, system-ui, -webkit-system-font, sans-serif; b
 .chip.active { background: var(--blue); color: #fff; }
 .chip.alert::after { content: ''; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); border: 2px solid var(--bg); }
 .chip:active { transform: scale(0.95); }
+.chip-add { border: 2px dashed var(--border); background: transparent; color: var(--muted); font-size: 1rem; padding: 4px 12px; }
+.chip-add:hover { border-color: var(--blue); color: var(--blue); }
 .agent .info { flex: 1; }
 .agent .project { font-size: 0.9rem; font-weight: 500; }
 .agent .meta { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
@@ -436,19 +438,21 @@ function renderWorkspaces(workspaces) {
     html += `<button class="chip${activeWorkspace===wsId?' active':''}${hasBlocked?' alert':''}" onclick="selectWorkspace('${wsId}')">${name}</button>`;
   }
   html += `</div>`;
-  // Tab chip strip (when workspace selected)
+  // Tab chip strip (always show when workspace selected)
   if (activeWorkspace) {
     const wsTabs = [...new Set(agents.filter(a => a.workspace_id === activeWorkspace).map(a => a.tab_id).filter(Boolean))];
+    html += `<div class="chip-strip"><span class="chip-label">Tabs</span>`;
     if (wsTabs.length > 1) {
-      html += `<div class="chip-strip"><span class="chip-label">Tabs</span>`;
       html += `<button class="chip${!activeTab?' active':''}" onclick="selectTab(null)">All</button>`;
-      wsTabs.forEach((tid, i) => {
-        const tabAgents = agents.filter(a => a.tab_id === tid);
-        const hasBlocked = tabAgents.some(a => a.status === 'blocked');
-        html += `<button class="chip${activeTab===tid?' active':''}${hasBlocked?' alert':''}" onclick="selectTab('${tid}')">Tab ${i+1}</button>`;
-      });
-      html += `</div>`;
     }
+    wsTabs.forEach((tid, i) => {
+      const tabAgents = agents.filter(a => a.tab_id === tid);
+      const hasBlocked = tabAgents.some(a => a.status === 'blocked');
+      const tabLabel = tabAgents[0]?.label || 'Tab '+(i+1);
+      html += `<button class="chip${activeTab===tid?' active':''}${hasBlocked?' alert':''}" onclick="selectTab('${tid}')">${tabLabel}</button>`;
+    });
+    html += `<button class="chip chip-add" onclick="createTab('${activeWorkspace}')">+</button>`;
+    html += `</div>`;
   }
   // Agent list (filtered)
   let filtered = agents;
@@ -482,6 +486,13 @@ function renderAgentList(list) {
 function selectWorkspace(id) { activeWorkspace = id; activeTab = null; render(); }
 function backToWorkspaces() { activeWorkspace = null; activeTab = null; render(); }
 function selectTab(id) { activeTab = id; render(); }
+
+function createTab(workspaceId) {
+  if (!ws) return;
+  if (window.cue) cue('sparkle');
+  ws.send(JSON.stringify({type:'create_tab', workspace_id: workspaceId}));
+  setTimeout(() => { activeTab = null; }, 1500);
+}
 
 function agentCard(a) {
   const color = a.status==='blocked'?'var(--red)':a.status==='working'?'var(--green)':'var(--muted)';

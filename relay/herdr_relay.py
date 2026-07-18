@@ -488,6 +488,15 @@ async def handle_client(ws):
                 log.info("Text from %s (%s): pane=%s text=%r", ip, device, pane_id, text)
                 audit("send_text", ip, device, pane_id, f"text={text!r}")
                 run_herdr("pane", "send-text", pane_id, text, remote=remote)
+            elif msg_type == "create_tab":
+                workspace_id = msg.get("workspace_id", "")
+                if workspace_id:
+                    log.info("Create tab from %s (%s): workspace=%s", ip, device, workspace_id)
+                    audit("create_tab", ip, device, "", f"workspace={workspace_id}")
+                    run_herdr("tab", "create", "--workspace", workspace_id, "--focus")
+                    await ws.send(json.dumps({"type": "tab_created", "ok": True}))
+                else:
+                    await ws.send(json.dumps({"type": "error", "message": "workspace_id required"}))
             elif msg_type == "push_subscribe":
                 sub = msg.get("subscription")
                 if sub and sub not in push_subscriptions:
